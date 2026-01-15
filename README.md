@@ -28,8 +28,8 @@
 
 ---
 
-## 📊 GitHub Stats
-![GitHub Stats](https://github-readme-stats.vercel.app/api?username=Fetzi672&show_icons=true&theme=dark)
+## 📊 GitHub 
+![GitHub Stats](https://github-readme-stats.vercel.app/api?username=Fetzi672&show_icons=true&theme=dark&count_private=true)
 ![Top Languages](https://github-readme-stats.vercel.app/api/top-langs/?username=Fetzi672&layout=compact&theme=dark)
 
 ---
