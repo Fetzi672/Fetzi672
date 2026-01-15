@@ -1,4 +1,4 @@
-# 👋 Hi, I'm Fetzi672
+# 👋 Hi, I'm Fetzi672 
 
 💻 Python Developer | Automation | Bots | Docker  
 🤖 Building Telegram & Discord bots  
@@ -23,7 +23,7 @@
 - 🎙️ **Discord Transcribe Bot**  
   Voice-to-text automation for Discord channels
 
-- 🧩 **Simplicity Framework**  
+- 🧩 **Simplex Framework**  
   Reusable Python architecture for bots & automation
 
 ---
@@ -35,5 +35,5 @@
 ---
 
 ## 📫 Contact
-- 💬 Discord: your_name_here
+- 💬 Discord: fetzi672
 - 🌍 GitHub: https://github.com/Fetzi672
