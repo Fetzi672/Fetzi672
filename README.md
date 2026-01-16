@@ -32,6 +32,7 @@
 
 ```charp
 // 🎙️ Discord Transcribe Bot 
+
 - Transcribes Discord voice messages with faster-whisper
 - Automatically falls back to CPU when no compatible GPU is available
 - Uses ffmpeg for audio decoding
