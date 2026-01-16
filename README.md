@@ -1,6 +1,6 @@
 # 👋 Hi, I'm Fetzi672 
 
-💻 Python Developer | Automation | Bots | Docker  
+💻 Python Dev[Python is my hobby] | Automation | Bots | Docker  
 🤖 Building Telegram & Discord bots  
 🧠 Focused on clean, robust, and scalable systems
 
