@@ -5,7 +5,7 @@
 🧠 Focused on clean, robust, and scalable systems
 
 ---
-
+```csharp
 ## 🔧 Tech Stack
 - 🐍 Python
 - 🐳 Docker & Docker Compose
@@ -17,7 +17,8 @@
 ---
 
 ## 🚀 Featured Projects
-- 🤖 **Python Multi-Tool Bot**  
+- 🤖 **Python Multi-Tool Bot** 
+``` 
   Modular bot with polling, commands, state handling & webhooks
 
 - 🎙️ **Discord Transcribe Bot**  
@@ -25,6 +26,7 @@
 
 - 🧩 **Simplex Framework**  
   Reusable Python architecture for bots & automation
+
 
 ---
 
