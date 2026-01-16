@@ -21,7 +21,7 @@
 # 🚀 **Featured Projects**
 
 ```csharp
-// 🤖 **Python Multi-Tool Bot** 
+// 🤖 Python Multi-Tool Bot
 
 - ADB-based screenshots
 - ROI and point selection directly on the screencap
@@ -30,11 +30,18 @@
 - Multi-instance emulator scan
 ```
 
-# 🎙️ **Discord Transcribe Bot**  
-  Voice-to-text automation for Discord channels
+```charp
+ 🎙️ Discord Transcribe Bot 
+- Transcribes Discord voice messages with faster-whisper
+- Automatically falls back to CPU when no compatible GPU is available
+- Uses ffmpeg for audio decoding
+- Runs on both Windows and Linux
+```
 
-- 🧩 **Simplex Framework**  
+```csharp
+- 🧩 Simplex Framework 
   Reusable Python architecture for bots & automation
+```
 
 
 ---
