@@ -21,7 +21,7 @@
 # 🚀 **Featured Projects**
 
 ```csharp
-// 🤖 Python Multi-Tool Bot
+/* 🤖 Python Multi-Tool Bot */
 
 - ADB-based screenshots
 - ROI and point selection directly on the screencap
@@ -31,7 +31,7 @@
 ```
 
 ```charp
-// 🎙️ Discord Transcribe Bot 
+/* 🎙️ Discord Transcribe Bot */
 
 - Transcribes Discord voice messages with faster-whisper
 - Automatically falls back to CPU when no compatible GPU is available
