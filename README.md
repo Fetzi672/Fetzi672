@@ -1,4 +1,4 @@
-# 👋 Hi, I'm Fetzi672 
+# 👋 **Hi, I'm Fetzi672**
 
 ```csharp
 💻 Python Dev [Python is my hobby] | Automation | Bots | Docker  
@@ -6,9 +6,9 @@
 🧠 Focused on clean, robust, and scalable systems
 ```
 
----
+# 🔧 **Tech Stack**
+
 ```csharp
-// 🔧 Tech Stack
 - 🐍 Python
 - 🐳 Docker & Docker Compose
 - 🤖 Telegram Bots (Telethon)
@@ -18,12 +18,19 @@
 
 ```
 
-## 🚀 Featured Projects
-- 🤖 **Python Multi-Tool Bot** 
+# 🚀 **Featured Projects**
 
-  Modular bot with polling, commands, state handling & webhooks
+```csharp
+// 🤖 **Python Multi-Tool Bot** 
 
-- 🎙️ **Discord Transcribe Bot**  
+- ADB-based screenshots
+- ROI and point selection directly on the screencap
+- Actions: tap, swipe/scroll, wait-until-image, sequences
+- Template matching with configurable confidence
+- Multi-instance emulator scan
+```
+
+# 🎙️ **Discord Transcribe Bot**  
   Voice-to-text automation for Discord channels
 
 - 🧩 **Simplex Framework**  
