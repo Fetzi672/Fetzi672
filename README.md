@@ -1,12 +1,14 @@
 # 👋 Hi, I'm Fetzi672 
 
-💻 Python Dev[Python is my hobby] | Automation | Bots | Docker  
+```csharp
+💻 Python Dev [Python is my hobby] | Automation | Bots | Docker  
 🤖 Building Telegram & Discord bots  
 🧠 Focused on clean, robust, and scalable systems
+```
 
 ---
 ```csharp
-## 🔧 Tech Stack
+// 🔧 Tech Stack
 - 🐍 Python
 - 🐳 Docker & Docker Compose
 - 🤖 Telegram Bots (Telethon)
@@ -14,11 +16,11 @@
 - 🧠 AI / LLMs (Ollama, OpenAI)
 - ☁️ Cloudflare / Zero Trust
 
----
+```
 
 ## 🚀 Featured Projects
 - 🤖 **Python Multi-Tool Bot** 
-``` 
+
   Modular bot with polling, commands, state handling & webhooks
 
 - 🎙️ **Discord Transcribe Bot**  
