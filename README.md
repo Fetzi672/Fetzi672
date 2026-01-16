@@ -31,7 +31,7 @@
 ```
 
 ```charp
- 🎙️ Discord Transcribe Bot 
+ //🎙️ Discord Transcribe Bot 
 - Transcribes Discord voice messages with faster-whisper
 - Automatically falls back to CPU when no compatible GPU is available
 - Uses ffmpeg for audio decoding
@@ -39,7 +39,7 @@
 ```
 
 ```csharp
-- 🧩 Simplex Framework 
+// 🧩 Simplex Framework 
   Reusable Python architecture for bots & automation
 ```
 
