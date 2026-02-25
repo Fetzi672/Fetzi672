@@ -1,58 +1,60 @@
 # 👋 **Hi, I'm Fetzi672**
 
-```csharp
-💻 Python Dev [Python is my hobby] | Automation | Bots | Docker  
-🤖 Building Telegram & Discord bots  
-🧠 Focused on clean, robust, and scalable systems
-```
+![Platform](https://img.shields.io/badge/Platform-FreeLeft%5BIDEN%5D.default_avatar_128_.svg) ![Country](https://img.shields.io/badge/Country-Frankfurt_🇩🇪_with_love-Blue) ![Chat](https://img.shields.io/badge/Chat-Discord_Telegram-5865F2)
+
+# 🖥️ My Setup
+- 💻 Custom Gaming PC (Windows + Linux dual boot)
+- 🌐 HomeLab with Docker & Services
+- 🐳 Self-hosted everything possible
+
+---
 
 # 🔧 **Tech Stack**
 
 ```csharp
 - 🐍 Python
 - 🐳 Docker & Docker Compose
-- 🤖 Telegram Bots (Telethon)
+- 🤖 Telegram Bots (Telethon / Aiogram)
 - 💬 Discord Bots & Webhooks
 - 🧠 AI / LLMs (Ollama, OpenAI)
-- ☁️ Cloudflare / Zero Trust
-
+- ☁️ Cloudflare \TeamStreaming \Zero Trust
 ```
-
-# 🚀 **Featured Projects**
-
-```csharp
-// 🤖 Python Multi-Tool Bot 
-
-- ADB-based screenshots
-- ROI and point selection directly on the screencap
-- Actions: tap, swipe/scroll, wait-until-image, sequences
-- Template matching with configurable confidence
-- Multi-instance emulator scan
-```
-
-```charp
-// 🎙️ Discord Transcribe Bot
-
-- Transcribes Discord voice messages with faster-whisper
-- Automatically falls back to CPU when no compatible GPU is available
-- Uses ffmpeg for audio decoding
-- Runs on both Windows and Linux
-```
-
-```csharp
-// 🧩 Simplex Framework 
-  Reusable Python architecture for bots & automation
-```
-
 
 ---
 
-## 📊 GitHub 
+# 🚀 **Featured Projects**
+
+## 🤖 Discord & Telegram Bots
+
+### [Discord Transcribe Bot](https://github.com/Fetzi672/discord-transcribe-bot)
+- Transcribes Discord voice messages to text using faster-whisper
+- Falls back to CPU when no GPU is available
+- Uses ffmpeg for audio decoding
+
+### [Discord Music Bot](https://github.com/Fetzi672/discord-mp3-bot)
+- Music bot for Discord voice channels
+- Supports multiple servers
+
+### [Discord Link Scanner](https://github.com/Fetzi672/discord-link-scanner)
+- Scans links in Discord for malware
+- Uses VirusTotal API
+
+### [Server Stats Bot](https://github.com/Fetzi672/server-stats-discord-bot)
+- Server statistics and monitoring
+- Docker & System monitoring
+
+### [Skywatch Bot](https://github.com/Fetzi672/skywatch-bot)
+- Aurora & Weather notifications
+- Astronomical event tracking
+
+---
+
+# 📊 GitHub Stats
 ![GitHub Stats](https://github-readme-stats.vercel.app/api?username=Fetzi672&show_icons=true&theme=dark&count_private=true)
 ![Top Languages](https://github-readme-stats.vercel.app/api/top-langs/?username=Fetzi672&layout=compact&theme=dark)
 
 ---
 
-## 📫 Contact
+# 📫 Contact
 - 💬 Discord: fetzi672
 - 🌍 GitHub: https://github.com/Fetzi672
