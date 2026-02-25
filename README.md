@@ -17,7 +17,7 @@
 - 🤖 Telegram Bots (Telethon / Aiogram)
 - 💬 Discord Bots & Webhooks
 - 🧠 AI / LLMs (Ollama, OpenAI)
-- ☁️ Cloudflare \TeamStreaming \Zero Trust
+- ☁️ Cloudflare/Zero Trust
 ```
 
 ---
@@ -30,10 +30,6 @@
 - Transcribes Discord voice messages to text using faster-whisper
 - Falls back to CPU when no GPU is available
 - Uses ffmpeg for audio decoding
-
-### [Discord Music Bot](https://github.com/Fetzi672/discord-mp3-bot)
-- Music bot for Discord voice channels
-- Supports multiple servers
 
 ### [Discord Link Scanner](https://github.com/Fetzi672/discord-link-scanner)
 - Scans links in Discord for malware
