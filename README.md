@@ -7,6 +7,12 @@
 - 🌐 HomeLab with Docker & Services
 - 🐳 Self-hosted everything possible
 
+```csharp
+Linux | Ubuntu 5.15.0-170-generic
+CPU   | AMD EPYC 7763 12 Cores        
+RAM   | 16 GB
+```
+
 ---
 
 # 🔧 **Tech Stack**
