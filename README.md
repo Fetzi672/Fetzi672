@@ -1,62 +1,43 @@
-# 👋 **Hi, I'm Fetzi672**
+# 👋 Hey, I'm **Fetzi672**
 
-![Platform](https://img.shields.io/badge/Platform-FreeLeft%5BIDEN%5D.default_avatar_128_.svg) ![Country](https://img.shields.io/badge/Country-Frankfurt_🇩🇪_with_love-Blue) ![Chat](https://img.shields.io/badge/Chat-Discord_Telegram-5865F2)
+I build practical automation, game backends, and self-hosted services.
 
-# 🖥️ My Setup
-- 💻 Custom Gaming PC (Windows + Linux dual boot)
-- 🌐 HomeLab with Docker & Services
-- 🐳 Self-hosted everything possible
-
-```csharp
-Linux | Ubuntu 5.15.0-170-generic
-CPU   | AMD EPYC 7763 12 Cores        
-RAM   | 16 GB
-```
+![Focus](https://img.shields.io/badge/Focus-Bots%20%7C%20Automation%20%7C%20Self--Hosting-4c1)
+![Stack](https://img.shields.io/badge/Stack-Python%20%7C%20Docker%20%7C%20FastAPI%20%7C%20Next.js-0ea5e9)
+![Location](https://img.shields.io/badge/Based%20in-Frankfurt%20🇩🇪-2563eb)
 
 ---
 
-# 🔧 **Tech Stack**
+## ⚙️ Current Playground
 
-```csharp
-- 🐍 Python
-- 🐳 Docker & Docker Compose
-- 🤖 Telegram Bots (Telethon / Aiogram)
-- 💬 Discord Bots & Webhooks
-- 🧠 AI / LLMs (Ollama, OpenAI)
-- ☁️ Cloudflare/Zero Trust
-```
+- 🐍 Python services and bots
+- 🐳 Docker-first deployments
+- 🌐 OAuth integrations and secure APIs
+- 🧠 AI-assisted workflows and tooling
 
 ---
 
-# 🚀 **Featured Projects**
+## 🚀 Latest 3 Active Projects
 
-## 🤖 Discord & Telegram Bots
+### 1) [clawpoker-discord-holdem](https://github.com/Fetzi672/clawpoker-discord-holdem)
+Web Texas Hold’em platform with Discord OAuth, real-time table state, ranking, and persistent stats.
 
-### [Discord Transcribe Bot](https://github.com/Fetzi672/discord-transcribe-bot)
-- Transcribes Discord voice messages to text using faster-whisper
-- Falls back to CPU when no GPU is available
-- Uses ffmpeg for audio decoding
+### 2) [werwolf-discord](https://github.com/Fetzi672/werwolf-discord)
+Social deduction game backend + frontend stack with Discord ecosystem integration.
 
-### [Discord Link Scanner](https://github.com/Fetzi672/discord-link-scanner)
-- Scans links in Discord for malware
-- Uses VirusTotal API
-
-### [Server Stats Bot](https://github.com/Fetzi672/server-stats-discord-bot)
-- Server statistics and monitoring
-- Docker & System monitoring
-
-### [Skywatch Bot](https://github.com/Fetzi672/skywatch-bot)
-- Aurora & Weather notifications
-- Astronomical event tracking
+### 3) [discord-nr1-bot-new](https://github.com/Fetzi672/discord-nr1-bot-new)
+Utility bot project for Discord automation and community workflows.
 
 ---
 
-# 📊 GitHub Stats
-![GitHub Stats](https://github-readme-stats.vercel.app/api?username=Fetzi672&show_icons=true&theme=dark&count_private=true)
-![Top Languages](https://github-readme-stats.vercel.app/api/top-langs/?username=Fetzi672&layout=compact&theme=dark)
+## 📊 GitHub Stats
+
+![GitHub Stats](https://github-readme-stats.vercel.app/api?username=Fetzi672&show_icons=true&theme=tokyonight&count_private=true)
+![Top Languages](https://github-readme-stats.vercel.app/api/top-langs/?username=Fetzi672&layout=compact&theme=tokyonight)
 
 ---
 
-# 📫 Contact
-- 💬 Discord: fetzi672
-- 🌍 GitHub: https://github.com/Fetzi672
+## 📫 Contact
+
+- Discord: `fetzi672`
+- GitHub: [github.com/Fetzi672](https://github.com/Fetzi672)
