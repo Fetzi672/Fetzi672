@@ -12,7 +12,7 @@
 
 ---
 
-## �� About Me
+## 👀 About Me
 
 > I build practical, production-ready tools — from Discord bots and game backends to OAuth-secured APIs and self-hosted infrastructure. I care about clean architecture, real-time state management, and automation that actually works.
 
