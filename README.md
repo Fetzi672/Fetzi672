@@ -107,8 +107,17 @@ Modular **Discord utility bot** covering community automation, moderation workfl
 
 <div align="center">
 
-<img height="160" src="https://github-readme-stats.vercel.app/api?username=Fetzi672&show_icons=true&theme=tokyonight&count_private=true&hide_border=true" />
-<img height="160" src="https://github-readme-stats.vercel.app/api/top-langs/?username=Fetzi672&layout=compact&theme=tokyonight&hide_border=true&langs_count=6" />
+<!-- Primary stats (may be unavailable if service is down) -->
+<img height="160" src="https://github-readme-stats.vercel.app/api?username=Fetzi672&show_icons=true&theme=tokyonight&count_private=true&hide_border=true" alt="GitHub Stats" />
+<img height="160" src="https://github-readme-stats.vercel.app/api/top-langs/?username=Fetzi672&layout=compact&theme=tokyonight&hide_border=true&langs_count=6" alt="Top Languages" />
+
+</div>
+
+<div align="center">
+
+<!-- Fallback badges: shown as reliable alternatives when the above service is unavailable -->
+[![GitHub stars](https://img.shields.io/github/stars/Fetzi672?style=for-the-badge&color=0ea5e9)](https://github.com/Fetzi672)
+[![Followers](https://img.shields.io/github/followers/Fetzi672?style=for-the-badge&color=0ea5e9)](https://github.com/Fetzi672)
 
 </div>
 
