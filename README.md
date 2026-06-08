@@ -18,6 +18,7 @@
 
 ```text
 🔭 Currently building  →  real-time multiplayer game backends
+🛠️ Also shipping       →  Discord economy, social & tooling bots (private)
 🐳 Infra of choice     →  Docker-first, self-hosted everything
 🌐 Integrations        →  Discord OAuth, REST APIs, WebSockets
 🤖 Interests           →  AI-assisted tooling & workflow automation
@@ -91,15 +92,48 @@ Modular **Discord utility bot** covering community automation, moderation workfl
 </td>
 <td width="50%">
 
-### 🔧 Focus Areas
-- Real-time multiplayer systems
-- OAuth & secure API design
-- Self-hosted service stacks
-- AI-assisted automation pipelines
+### 🐟 [fish-master](https://github.com/Fetzi672/fish-master) 🔒
+Production **Discord fishing-economy bot** — 30+ commands, DREDGE-style anomaly system, tournaments, trading, i18n (en/de), Docker-first.
+
+![JavaScript](https://img.shields.io/badge/-JavaScript-F7DF1E?style=flat-square&logo=javascript&logoColor=black)
+![discord.js](https://img.shields.io/badge/-discord.js-5865F2?style=flat-square&logo=discord&logoColor=white)
+![Docker](https://img.shields.io/badge/-Docker-2496ED?style=flat-square&logo=docker&logoColor=white)
+
+</td>
+</tr>
+<tr>
+<td width="50%">
+
+### 📝 [helper-bot](https://github.com/Fetzi672/helper-bot) 🔒
+Personal **Discord notes & quick-messages bot** — owner-gated, SQLite, 14 slash commands, purple embeds, attachment support.
+
+![Python](https://img.shields.io/badge/-Python-3776AB?style=flat-square&logo=python&logoColor=white)
+![discord.py](https://img.shields.io/badge/-discord.py-5865F2?style=flat-square&logo=discord&logoColor=white)
+![Docker](https://img.shields.io/badge/-Docker-2496ED?style=flat-square&logo=docker&logoColor=white)
+
+</td>
+<td width="50%">
+
+### 🔒 [nr1-protocol](https://github.com/Fetzi672/nr1-protocol)
+**Discord moderation & automation monorepo** — bot + worker, Prisma + Postgres, Redis + BullMQ, role-sync, giveaway processor, slash command suite.
+
+![TypeScript](https://img.shields.io/badge/-TypeScript-3178C6?style=flat-square&logo=typescript&logoColor=white)
+![Prisma](https://img.shields.io/badge/-Prisma-2D3748?style=flat-square&logo=prisma&logoColor=white)
+![PostgreSQL](https://img.shields.io/badge/-PostgreSQL-4169E1?style=flat-square&logo=postgresql&logoColor=white)
+![Redis](https://img.shields.io/badge/-Redis-DC382D?style=flat-square&logo=redis&logoColor=white)
 
 </td>
 </tr>
 </table>
+
+## 🔒 Private (in development)
+
+Bots & backends I'm actively working on but not ready to share publicly yet. Source lives in my private repos — short descriptions only here.
+
+- 🐟 **[fish-master](https://github.com/Fetzi672/fish-master)** — Discord fishing-economy bot
+- 📝 **[helper-bot](https://github.com/Fetzi672/helper-bot)** — Personal Discord notes bot
+- 🔒 **[nr1-protocol](https://github.com/Fetzi672/nr1-protocol)** — Discord moderation monorepo
+- ⚡ Utility bots: **[discord-tel-bot](https://github.com/Fetzi672/discord-tel-bot)**, **[discord-transcribe-bot](https://github.com/Fetzi672/discord-transcribe-bot)**, **[discord-mp3-bot](https://github.com/Fetzi672/discord-mp3-bot)**, **[skywatch-bot](https://github.com/Fetzi672/skywatch-bot)**, **[server-stats-discord-bot](https://github.com/Fetzi672/server-stats-discord-bot)**
 
 ---
 
