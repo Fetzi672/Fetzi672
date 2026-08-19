@@ -76,6 +76,14 @@ public final class SessionHandoff {
         startOriginal(a);
     }
 
+    /**
+     * Backward-compatible entry point used by LicenseActivity source from V9.
+     * V10 intentionally does NOT restart or kill the process here.
+     */
+    public static void restartAfterVerify(Activity a){
+        activateAfterVerify(a);
+    }
+
     public static void clearRuntime(Context c){
         try{
             c.getSharedPreferences(PREF,0).edit().putInt(RUNTIME_PID,-1).commit();
