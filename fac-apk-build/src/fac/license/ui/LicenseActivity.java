@@ -120,7 +120,23 @@ public class LicenseActivity extends Activity {
     private void startGuardAndOverlay(){
         try { startService(new Intent(this,fac.license.overlay.LicenseOverlayService.class)); } catch(Exception ignored){}
     }
-    private void launchOriginal(){ runOnUiThread(()->{ try{ Intent i=new Intent(); i.setComponent(new ComponentName(getPackageName(),"com.core.activity.SplashActivity")); i.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP); startActivity(i); finish(); }catch(Exception e){ status("Original runtime could not be started.",Color.rgb(255,90,90)); }}); }
+
+    /**
+     * Restart the protected runtime as the root of its normal task. The
+     * original SplashActivity remains the package MAIN/LAUNCHER in v4 so
+     * NxScript can resolve its own launcher exactly like the untouched APK.
+     */
+    private void launchOriginal(){
+        runOnUiThread(()->{
+            try{
+                Intent i=new Intent();
+                i.setComponent(new ComponentName(getPackageName(),"com.core.activity.SplashActivity"));
+                i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_CLEAR_TASK);
+                startActivity(i);
+                finish();
+            }catch(Exception e){ status("Original runtime could not be started.",Color.rgb(255,90,90)); }
+        });
+    }
 
     private static class HttpResult{int code;String body;HttpResult(int c,String b){code=c;body=b;}}
     private HttpResult post(String u,JSONObject j)throws Exception{
