@@ -21,7 +21,7 @@ import android.security.keystore.KeyProperties;
 import android.util.Base64;
 import org.json.*;
 import fac.license.DeviceIdentity;
-import fac.license.LicenseGateProvider;
+import fac.license.SessionHandoff;
 
 public class LicenseActivity extends Activity {
     public static final String VERIFY_URL="https://fac.fetzi-ai.de/api/android/licenses/verify";
@@ -37,36 +37,17 @@ public class LicenseActivity extends Activity {
     @Override public void onCreate(Bundle b){
         super.onCreate(b);
 
-        // V7: LicenseActivity is the real visible launcher in :facgate. If the
-        // protected main process is already alive (for example an internal
-        // package-launcher relaunch from NxScript), forward immediately instead
-        // of interrupting the session with another login screen.
+        // V9 deliberately does not depend on android:process or an early
+        // ContentProvider kill gate. On the post-verify cold process this
+        // consumes the one-shot handoff and promotes the untouched original
+        // SplashActivity to the task root. During an already-running protected
+        // session it also forwards internal package-launcher relaunches.
         if(!getIntent().getBooleanExtra("status_only",false)
-                && getSharedPreferences(PREF,0).getBoolean("verified",false)
-                && protectedRuntimeRunning()){
-            try{ LicenseGateProvider.resumeVerifiedRuntime(this); }catch(Exception ignored){}
-            finish();
-            return;
-        }
+                && SessionHandoff.handleLauncher(this)) return;
 
         buildUi();
         String saved=loadKey();
         if(saved.length()>0){ keyInput.setText(saved); verifyKey(saved,true); }
-    }
-
-    private boolean protectedRuntimeRunning(){
-        try{
-            ActivityManager am=(ActivityManager)getSystemService(ACTIVITY_SERVICE);
-            if(am==null)return false;
-            List<ActivityManager.RunningAppProcessInfo> ps=am.getRunningAppProcesses();
-            if(ps==null)return false;
-            String main=getPackageName();
-            int mine=android.os.Process.myPid();
-            for(ActivityManager.RunningAppProcessInfo p:ps){
-                if(p.pid!=mine && main.equals(p.processName)) return true;
-            }
-        }catch(Exception ignored){}
-        return false;
     }
 
     private int dp(int n){ return (int)(n*getResources().getDisplayMetrics().density+0.5f); }
@@ -82,7 +63,7 @@ public class LicenseActivity extends Activity {
         status=text("Not verified",15); status.setPadding(0,dp(16),0,dp(12)); status.setTextColor(Color.LTGRAY); root.addView(status);
         devices=new Button(this); devices.setText("SHOW DEVICES"); devices.setEnabled(false); devices.setOnClickListener(v->showDevices()); root.addView(devices);
         settings=new Button(this); settings.setText("BOT SETTINGS"); settings.setEnabled(false); settings.setOnClickListener(v->startActivity(new Intent(this,BotSettingsActivity.class))); root.addView(settings);
-        TextView note=text("License verification runs before the protected FAC process exists. After success, the untouched original runtime starts cold and owns its normal root and Android permission flow.",12); note.setTextColor(Color.GRAY); note.setPadding(0,dp(18),0,0); root.addView(note);
+        TextView note=text("After a successful verification FAC restarts once, then the untouched original root/core/permission startup runs in the fresh process.",12); note.setTextColor(Color.GRAY); note.setPadding(0,dp(18),0,0); root.addView(note);
         setContentView(scroll);
     }
 
@@ -104,22 +85,22 @@ public class LicenseActivity extends Activity {
                         if(bound<0 || limit<=0 || bound>limit) throw new IOException("invalid device counters");
                         saveKey(k);
                         long anchor=SystemClock.elapsedRealtime();
-                        getSharedPreferences(PREF,0).edit()
+                        boolean persisted=getSharedPreferences(PREF,0).edit()
                             .putBoolean("verified",true)
                             .putString("expiry",exp)
                             .putLong("expiry_epoch_ms",expEpoch)
                             .putLong("server_epoch_ms",srvEpoch)
                             .putLong("verify_elapsed_ms",anchor)
                             .putInt("bound",bound).putInt("limit",limit).commit();
+                        if(!persisted) throw new IOException("could not persist license state");
                         runOnUiThread(()->{
                             status.setTextColor(Color.rgb(80,220,120));
                             status.setText("License active until "+formatDate(expEpoch)+" • "+bound+"/"+limit+" devices");
                             devices.setEnabled(true); settings.setEnabled(true);
                         });
                         if(!getIntent().getBooleanExtra("status_only",false)){
-                            status("Verified. Starting original FAC runtime...",Color.rgb(80,220,120));
-                            LicenseGateProvider.startVerifiedColdProcess(this);
-                            runOnUiThread(()->finish());
+                            status("Verified. Restarting original FAC runtime...",Color.rgb(80,220,120));
+                            SessionHandoff.restartAfterVerify(this);
                         }
                         return;
                     }
@@ -133,7 +114,11 @@ public class LicenseActivity extends Activity {
         }).start();
     }
 
-    private void invalidateLocal(){ getSharedPreferences(PREF,0).edit().putBoolean("verified",false).commit(); }
+    private void invalidateLocal(){
+        SessionHandoff.clearRuntime(this);
+        getSharedPreferences(PREF,0).edit().putBoolean("verified",false).commit();
+    }
+
     private JSONObject baseRequest(String k) throws Exception { JSONObject o=new JSONObject(); o.put("licenseKey",k); o.put("deviceId",DeviceIdentity.get(this)); o.put("appVersion",APP_VERSION); return o; }
     private void showDevices(){
         final String k=keyInput.getText().toString().trim();
