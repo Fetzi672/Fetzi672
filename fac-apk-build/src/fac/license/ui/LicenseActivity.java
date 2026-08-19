@@ -37,11 +37,11 @@ public class LicenseActivity extends Activity {
     @Override public void onCreate(Bundle b){
         super.onCreate(b);
 
-        // V9 deliberately does not depend on android:process or an early
-        // ContentProvider kill gate. On the post-verify cold process this
-        // consumes the one-shot handoff and promotes the untouched original
-        // SplashActivity to the task root. During an already-running protected
-        // session it also forwards internal package-launcher relaunches.
+        // V10 stays in the current package process. If the untouched runtime
+        // internally relaunches the package launcher while this exact verified
+        // process is still alive, SessionHandoff forwards directly to Splash.
+        // A genuinely new process falls through and verifies the saved key
+        // online again before the original runtime is opened.
         if(!getIntent().getBooleanExtra("status_only",false)
                 && SessionHandoff.handleLauncher(this)) return;
 
@@ -63,7 +63,7 @@ public class LicenseActivity extends Activity {
         status=text("Not verified",15); status.setPadding(0,dp(16),0,dp(12)); status.setTextColor(Color.LTGRAY); root.addView(status);
         devices=new Button(this); devices.setText("SHOW DEVICES"); devices.setEnabled(false); devices.setOnClickListener(v->showDevices()); root.addView(devices);
         settings=new Button(this); settings.setText("BOT SETTINGS"); settings.setEnabled(false); settings.setOnClickListener(v->startActivity(new Intent(this,BotSettingsActivity.class))); root.addView(settings);
-        TextView note=text("After a successful verification FAC restarts once, then the untouched original root/core/permission startup runs in the fresh process.",12); note.setTextColor(Color.GRAY); note.setPadding(0,dp(18),0,0); root.addView(note);
+        TextView note=text("After successful verification FAC opens the untouched original runtime directly without restarting the app process.",12); note.setTextColor(Color.GRAY); note.setPadding(0,dp(18),0,0); root.addView(note);
         setContentView(scroll);
     }
 
@@ -99,8 +99,8 @@ public class LicenseActivity extends Activity {
                             devices.setEnabled(true); settings.setEnabled(true);
                         });
                         if(!getIntent().getBooleanExtra("status_only",false)){
-                            status("Verified. Restarting original FAC runtime...",Color.rgb(80,220,120));
-                            SessionHandoff.restartAfterVerify(this);
+                            status("Verified. Opening original FAC runtime...",Color.rgb(80,220,120));
+                            SessionHandoff.activateAfterVerify(this);
                         }
                         return;
                     }
