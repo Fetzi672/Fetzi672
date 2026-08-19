@@ -36,9 +36,37 @@ public class LicenseActivity extends Activity {
 
     @Override public void onCreate(Bundle b){
         super.onCreate(b);
+
+        // V7: LicenseActivity is the real visible launcher in :facgate. If the
+        // protected main process is already alive (for example an internal
+        // package-launcher relaunch from NxScript), forward immediately instead
+        // of interrupting the session with another login screen.
+        if(!getIntent().getBooleanExtra("status_only",false)
+                && getSharedPreferences(PREF,0).getBoolean("verified",false)
+                && protectedRuntimeRunning()){
+            try{ LicenseGateProvider.resumeVerifiedRuntime(this); }catch(Exception ignored){}
+            finish();
+            return;
+        }
+
         buildUi();
         String saved=loadKey();
         if(saved.length()>0){ keyInput.setText(saved); verifyKey(saved,true); }
+    }
+
+    private boolean protectedRuntimeRunning(){
+        try{
+            ActivityManager am=(ActivityManager)getSystemService(ACTIVITY_SERVICE);
+            if(am==null)return false;
+            List<ActivityManager.RunningAppProcessInfo> ps=am.getRunningAppProcesses();
+            if(ps==null)return false;
+            String main=getPackageName();
+            int mine=android.os.Process.myPid();
+            for(ActivityManager.RunningAppProcessInfo p:ps){
+                if(p.pid!=mine && main.equals(p.processName)) return true;
+            }
+        }catch(Exception ignored){}
+        return false;
     }
 
     private int dp(int n){ return (int)(n*getResources().getDisplayMetrics().density+0.5f); }
@@ -54,7 +82,7 @@ public class LicenseActivity extends Activity {
         status=text("Not verified",15); status.setPadding(0,dp(16),0,dp(12)); status.setTextColor(Color.LTGRAY); root.addView(status);
         devices=new Button(this); devices.setText("SHOW DEVICES"); devices.setEnabled(false); devices.setOnClickListener(v->showDevices()); root.addView(devices);
         settings=new Button(this); settings.setText("BOT SETTINGS"); settings.setEnabled(false); settings.setOnClickListener(v->startActivity(new Intent(this,BotSettingsActivity.class))); root.addView(settings);
-        TextView note=text("Verification runs in an isolated gate process. After success, FAC starts the untouched original runtime in a fresh process so its own root and permission flow can run normally.",12); note.setTextColor(Color.GRAY); note.setPadding(0,dp(18),0,0); root.addView(note);
+        TextView note=text("License verification runs before the protected FAC process exists. After success, the untouched original runtime starts cold and owns its normal root and Android permission flow.",12); note.setTextColor(Color.GRAY); note.setPadding(0,dp(18),0,0); root.addView(note);
         setContentView(scroll);
     }
 
@@ -91,6 +119,7 @@ public class LicenseActivity extends Activity {
                         if(!getIntent().getBooleanExtra("status_only",false)){
                             status("Verified. Starting original FAC runtime...",Color.rgb(80,220,120));
                             LicenseGateProvider.startVerifiedColdProcess(this);
+                            runOnUiThread(()->finish());
                         }
                         return;
                     }
