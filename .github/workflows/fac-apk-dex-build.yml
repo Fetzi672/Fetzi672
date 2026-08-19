@@ -5,6 +5,11 @@ on:
     paths:
       - 'fac-apk-build/**'
       - '.github/workflows/fac-apk-dex-build.yml'
+  pull_request:
+    branches: [ "main" ]
+    paths:
+      - 'fac-apk-build/**'
+      - '.github/workflows/fac-apk-dex-build.yml'
   workflow_dispatch:
 
 jobs:
