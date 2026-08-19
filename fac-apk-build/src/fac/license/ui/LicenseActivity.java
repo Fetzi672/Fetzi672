@@ -3,7 +3,6 @@ package fac.license.ui;
 import android.app.*;
 import android.os.*;
 import android.content.*;
-import android.graphics.BitmapFactory;
 import android.graphics.Color;
 import android.text.InputType;
 import android.view.*;
@@ -21,8 +20,10 @@ import android.security.keystore.KeyProperties;
 import android.util.Base64;
 import org.json.*;
 import fac.license.DeviceIdentity;
-import fac.license.SessionHandoff;
+import fac.license.runtime.FacAppComponentFactoryX;
+import fac.license.runtime.LicenseRuntimeGuard;
 
+/** V11 minimal gate. This Activity is instantiated in place of SplashActivity by the component factory. */
 public class LicenseActivity extends Activity {
     public static final String VERIFY_URL="https://fac.fetzi-ai.de/api/android/licenses/verify";
     public static final String DEVICES_URL="https://fac.fetzi-ai.de/api/android/licenses/devices";
@@ -31,20 +32,11 @@ public class LicenseActivity extends Activity {
     private static final String KEY_ALIAS="fac_license_key_v1";
     private EditText keyInput;
     private TextView status;
-    private Button verify, devices, settings;
+    private Button verify, devices;
     private volatile boolean busy;
 
     @Override public void onCreate(Bundle b){
         super.onCreate(b);
-
-        // V10 stays in the current package process. If the untouched runtime
-        // internally relaunches the package launcher while this exact verified
-        // process is still alive, SessionHandoff forwards directly to Splash.
-        // A genuinely new process falls through and verifies the saved key
-        // online again before the original runtime is opened.
-        if(!getIntent().getBooleanExtra("status_only",false)
-                && SessionHandoff.handleLauncher(this)) return;
-
         buildUi();
         String saved=loadKey();
         if(saved.length()>0){ keyInput.setText(saved); verifyKey(saved,true); }
@@ -54,16 +46,14 @@ public class LicenseActivity extends Activity {
     private TextView text(String s,int sp){ TextView v=new TextView(this); v.setText(s); v.setTextColor(Color.WHITE); v.setTextSize(sp); return v; }
     private void buildUi(){
         ScrollView scroll=new ScrollView(this); scroll.setBackgroundColor(Color.rgb(20,20,24));
-        LinearLayout root=new LinearLayout(this); root.setOrientation(LinearLayout.VERTICAL); root.setPadding(dp(24),dp(28),dp(24),dp(28)); scroll.addView(root,new ScrollView.LayoutParams(-1,-2));
-        try { ImageView logo=new ImageView(this); logo.setAdjustViewBounds(true); logo.setMaxHeight(dp(150)); InputStream in=getAssets().open("fac/fac_logo_license.png"); logo.setImageBitmap(BitmapFactory.decodeStream(in)); in.close(); root.addView(logo,new LinearLayout.LayoutParams(-1,dp(150))); } catch(Exception ignored){}
-        TextView title=text("FAC License",26); title.setGravity(Gravity.CENTER); title.setPadding(0,dp(12),0,dp(20)); root.addView(title);
+        LinearLayout root=new LinearLayout(this); root.setOrientation(LinearLayout.VERTICAL); root.setPadding(dp(24),dp(36),dp(24),dp(28)); scroll.addView(root,new ScrollView.LayoutParams(-1,-2));
+        TextView title=text("FAC License",28); title.setGravity(Gravity.CENTER); title.setPadding(0,0,0,dp(24)); root.addView(title);
         TextView hint=text("Enter your FAC license key",14); hint.setTextColor(Color.LTGRAY); root.addView(hint);
         keyInput=new EditText(this); keyInput.setSingleLine(true); keyInput.setTextColor(Color.WHITE); keyInput.setHintTextColor(Color.GRAY); keyInput.setHint("FACWEEK-XXXX-XXXX-XXXX"); keyInput.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS); keyInput.setTypeface(android.graphics.Typeface.MONOSPACE); root.addView(keyInput,new LinearLayout.LayoutParams(-1,dp(54)));
         verify=new Button(this); verify.setText("VERIFY"); verify.setOnClickListener(v->verifyKey(keyInput.getText().toString().trim(),false)); root.addView(verify,new LinearLayout.LayoutParams(-1,dp(54)));
         status=text("Not verified",15); status.setPadding(0,dp(16),0,dp(12)); status.setTextColor(Color.LTGRAY); root.addView(status);
         devices=new Button(this); devices.setText("SHOW DEVICES"); devices.setEnabled(false); devices.setOnClickListener(v->showDevices()); root.addView(devices);
-        settings=new Button(this); settings.setText("BOT SETTINGS"); settings.setEnabled(false); settings.setOnClickListener(v->startActivity(new Intent(this,BotSettingsActivity.class))); root.addView(settings);
-        TextView note=text("After successful verification FAC opens the untouched original runtime directly without restarting the app process.",12); note.setTextColor(Color.GRAY); note.setPadding(0,dp(18),0,0); root.addView(note);
+        TextView note=text("V11 minimal compatibility gate • original launcher/runtime preserved",12); note.setTextColor(Color.GRAY); note.setPadding(0,dp(18),0,0); root.addView(note);
         setContentView(scroll);
     }
 
@@ -96,12 +86,14 @@ public class LicenseActivity extends Activity {
                         runOnUiThread(()->{
                             status.setTextColor(Color.rgb(80,220,120));
                             status.setText("License active until "+formatDate(expEpoch)+" • "+bound+"/"+limit+" devices");
-                            devices.setEnabled(true); settings.setEnabled(true);
+                            devices.setEnabled(true);
+                            FacAppComponentFactoryX.authorizeRuntime();
+                            LicenseRuntimeGuard.arm(getApplicationContext(),k,expEpoch,srvEpoch,anchor);
+                            Intent i=new Intent();
+                            i.setComponent(new ComponentName(getPackageName(),"com.core.activity.SplashActivity"));
+                            startActivity(i);
+                            finish();
                         });
-                        if(!getIntent().getBooleanExtra("status_only",false)){
-                            status("Verified. Opening original FAC runtime...",Color.rgb(80,220,120));
-                            SessionHandoff.activateAfterVerify(this);
-                        }
                         return;
                     }
                 }
@@ -111,11 +103,11 @@ public class LicenseActivity extends Activity {
                 invalidateLocal();
                 status("Server unreachable or response invalid. Try again later.",Color.rgb(255,90,90));
             } finally { setBusy(false); }
-        }).start();
+        },"FAC-V11-Verify").start();
     }
 
     private void invalidateLocal(){
-        SessionHandoff.clearRuntime(this);
+        FacAppComponentFactoryX.revokeRuntime();
         getSharedPreferences(PREF,0).edit().putBoolean("verified",false).commit();
     }
 
@@ -130,7 +122,7 @@ public class LicenseActivity extends Activity {
                 final String msg=sb.length()==0?"No devices returned.":sb.toString();
                 runOnUiThread(()->new AlertDialog.Builder(this).setTitle("Licensed devices").setMessage(msg).setPositiveButton("OK",null).show());
             }catch(Exception e){ status("Could not load device list.",Color.rgb(255,90,90)); }
-        }).start();
+        },"FAC-V11-Devices").start();
     }
     private void status(final String s,final int c){ runOnUiThread(()->{status.setText(s);status.setTextColor(c);}); }
 
