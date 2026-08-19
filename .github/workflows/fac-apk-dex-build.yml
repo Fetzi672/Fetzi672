@@ -1,0 +1,33 @@
+name: FAC APK DEX Build
+on:
+  push:
+    branches: [ "chatgpt/fac-apk-toolchain-20260818" ]
+    paths:
+      - 'fac-apk-build/**'
+      - '.github/workflows/fac-apk-dex-build.yml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile Java against Android SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          ANDROID_JAR=$(find "$ANDROID_HOME/platforms" -maxdepth 2 -name android.jar | sort -V | tail -1)
+          echo "Using $ANDROID_JAR"
+          mkdir -p fac-apk-build/out/classes fac-apk-build/out/dex
+          javac -source 8 -target 8 -encoding UTF-8 -cp "$ANDROID_JAR" -d fac-apk-build/out/classes $(find fac-apk-build/src -name '*.java' -print)
+          D8=$(find "$ANDROID_HOME/build-tools" -maxdepth 2 -type f -name d8 | sort -V | tail -1)
+          echo "Using $D8"
+          "$D8" --min-api 16 --output fac-apk-build/out/dex $(find fac-apk-build/out/classes -name '*.class' -print)
+          test -s fac-apk-build/out/dex/classes.dex
+          sha256sum fac-apk-build/out/dex/classes.dex
+      - name: Upload DEX
+        uses: actions/upload-artifact@v4
+        with:
+          name: fac-license-classes2-dex
+          path: fac-apk-build/out/dex/classes.dex
+          if-no-files-found: error
