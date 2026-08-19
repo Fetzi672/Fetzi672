@@ -36,7 +36,7 @@ public class LicenseOverlayService extends Service {
 
     private int dp(int n){return (int)(n*getResources().getDisplayMetrics().density+.5f);}
     @Override public void onCreate(){ super.onCreate(); handler=new Handler(Looper.getMainLooper()); showBadge(); lastServerCheckElapsed=SystemClock.elapsedRealtime(); handler.postDelayed(guardTick,LOCAL_CHECK_MS); }
-    @Override public int onStartCommand(Intent i,int flags,int id){ if(badge==null)showBadge(); return START_STICKY; }
+    @Override public int onStartCommand(Intent i,int flags,int id){ if(badge==null)showBadge(); return START_NOT_STICKY; }
     private int overlayType(){return Build.VERSION.SDK_INT>=26?WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY:WindowManager.LayoutParams.TYPE_PHONE;}
     private TextView item(String t){TextView v=new TextView(this);v.setText(t);v.setTextColor(Color.WHITE);v.setTextSize(14);v.setGravity(Gravity.CENTER_VERTICAL);v.setPadding(dp(16),0,dp(16),0);return v;}
 
