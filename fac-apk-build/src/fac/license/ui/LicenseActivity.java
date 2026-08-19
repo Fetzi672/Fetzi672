@@ -2,7 +2,6 @@ package fac.license.ui;
 
 import android.app.*;
 import android.os.*;
-import android.provider.Settings;
 import android.content.*;
 import android.graphics.BitmapFactory;
 import android.graphics.Color;
@@ -21,6 +20,8 @@ import android.security.keystore.KeyGenParameterSpec;
 import android.security.keystore.KeyProperties;
 import android.util.Base64;
 import org.json.*;
+import fac.license.DeviceIdentity;
+import fac.license.LicenseGateProvider;
 
 public class LicenseActivity extends Activity {
     public static final String VERIFY_URL="https://fac.fetzi-ai.de/api/android/licenses/verify";
@@ -53,7 +54,7 @@ public class LicenseActivity extends Activity {
         status=text("Not verified",15); status.setPadding(0,dp(16),0,dp(12)); status.setTextColor(Color.LTGRAY); root.addView(status);
         devices=new Button(this); devices.setText("SHOW DEVICES"); devices.setEnabled(false); devices.setOnClickListener(v->showDevices()); root.addView(devices);
         settings=new Button(this); settings.setText("BOT SETTINGS"); settings.setEnabled(false); settings.setOnClickListener(v->startActivity(new Intent(this,BotSettingsActivity.class))); root.addView(settings);
-        TextView note=text("The protected runtime requires an active FAC license. The license is rechecked during the session.",12); note.setTextColor(Color.GRAY); note.setPadding(0,dp(18),0,0); root.addView(note);
+        TextView note=text("Verification runs in an isolated gate process. After success, FAC starts the untouched original runtime in a fresh process so its own root and permission flow can run normally.",12); note.setTextColor(Color.GRAY); note.setPadding(0,dp(18),0,0); root.addView(note);
         setContentView(scroll);
     }
 
@@ -81,14 +82,16 @@ public class LicenseActivity extends Activity {
                             .putLong("expiry_epoch_ms",expEpoch)
                             .putLong("server_epoch_ms",srvEpoch)
                             .putLong("verify_elapsed_ms",anchor)
-                            .putInt("bound",bound).putInt("limit",limit).apply();
+                            .putInt("bound",bound).putInt("limit",limit).commit();
                         runOnUiThread(()->{
                             status.setTextColor(Color.rgb(80,220,120));
                             status.setText("License active until "+formatDate(expEpoch)+" • "+bound+"/"+limit+" devices");
                             devices.setEnabled(true); settings.setEnabled(true);
                         });
-                        startGuardAndOverlay();
-                        if(!getIntent().getBooleanExtra("status_only",false)) launchOriginal();
+                        if(!getIntent().getBooleanExtra("status_only",false)){
+                            status("Verified. Starting original FAC runtime...",Color.rgb(80,220,120));
+                            LicenseGateProvider.startVerifiedColdProcess(this);
+                        }
                         return;
                     }
                 }
@@ -101,8 +104,8 @@ public class LicenseActivity extends Activity {
         }).start();
     }
 
-    private void invalidateLocal(){ getSharedPreferences(PREF,0).edit().putBoolean("verified",false).apply(); }
-    private JSONObject baseRequest(String k) throws Exception { JSONObject o=new JSONObject(); o.put("licenseKey",k); o.put("deviceId",deviceId()); o.put("appVersion",APP_VERSION); return o; }
+    private void invalidateLocal(){ getSharedPreferences(PREF,0).edit().putBoolean("verified",false).commit(); }
+    private JSONObject baseRequest(String k) throws Exception { JSONObject o=new JSONObject(); o.put("licenseKey",k); o.put("deviceId",DeviceIdentity.get(this)); o.put("appVersion",APP_VERSION); return o; }
     private void showDevices(){
         final String k=keyInput.getText().toString().trim();
         new Thread(()->{
@@ -117,27 +120,6 @@ public class LicenseActivity extends Activity {
     }
     private void status(final String s,final int c){ runOnUiThread(()->{status.setText(s);status.setTextColor(c);}); }
 
-    private void startGuardAndOverlay(){
-        try { startService(new Intent(this,fac.license.overlay.LicenseOverlayService.class)); } catch(Exception ignored){}
-    }
-
-    /**
-     * Restart the protected runtime as the root of its normal task. The
-     * original SplashActivity remains the package MAIN/LAUNCHER in v4 so
-     * NxScript can resolve its own launcher exactly like the untouched APK.
-     */
-    private void launchOriginal(){
-        runOnUiThread(()->{
-            try{
-                Intent i=new Intent();
-                i.setComponent(new ComponentName(getPackageName(),"com.core.activity.SplashActivity"));
-                i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_CLEAR_TASK);
-                startActivity(i);
-                finish();
-            }catch(Exception e){ status("Original runtime could not be started.",Color.rgb(255,90,90)); }
-        });
-    }
-
     private static class HttpResult{int code;String body;HttpResult(int c,String b){code=c;body=b;}}
     private HttpResult post(String u,JSONObject j)throws Exception{
         HttpURLConnection c=(HttpURLConnection)new URL(u).openConnection(); c.setConnectTimeout(8000);c.setReadTimeout(8000);c.setRequestMethod("POST");c.setDoOutput(true);c.setRequestProperty("Content-Type","application/json; charset=utf-8");c.setRequestProperty("Accept","application/json");
@@ -146,11 +128,7 @@ public class LicenseActivity extends Activity {
         if(in!=null){byte[] buf=new byte[1024];int n,total=0;while((n=in.read(buf))>0&&total<4096){int take=Math.min(n,4096-total);out.write(buf,0,take);total+=take;if(total>=4096)break;}in.close();}
         c.disconnect(); return new HttpResult(code,new String(out.toByteArray(),StandardCharsets.UTF_8));
     }
-    private String deviceId()throws Exception{
-        SharedPreferences p=getSharedPreferences(PREF,0); String uuid=p.getString("install_uuid",null); if(uuid==null){uuid=UUID.randomUUID().toString();p.edit().putString("install_uuid",uuid).apply();}
-        String aid=Settings.Secure.getString(getContentResolver(),Settings.Secure.ANDROID_ID); if(aid==null)aid="unknown";
-        MessageDigest md=MessageDigest.getInstance("SHA-256"); byte[] h=md.digest((aid+":"+uuid).getBytes(StandardCharsets.UTF_8)); StringBuilder sb=new StringBuilder(64);for(byte x:h)sb.append(String.format(Locale.US,"%02x",x&255));return sb.toString();
-    }
+
     public static long parseUtc(String s){
         if(s==null)return -1; s=s.trim(); if(s.length()==0)return -1;
         try{
@@ -166,7 +144,7 @@ public class LicenseActivity extends Activity {
             KeyStore ks=KeyStore.getInstance("AndroidKeyStore");ks.load(null);
             if(!ks.containsAlias(KEY_ALIAS)){ KeyGenerator kg=KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES,"AndroidKeyStore"); kg.init(new KeyGenParameterSpec.Builder(KEY_ALIAS,KeyProperties.PURPOSE_ENCRYPT|KeyProperties.PURPOSE_DECRYPT).setBlockModes(KeyProperties.BLOCK_MODE_GCM).setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE).build()); kg.generateKey(); }
             SecretKey sk=(SecretKey)ks.getKey(KEY_ALIAS,null); Cipher ci=Cipher.getInstance("AES/GCM/NoPadding");ci.init(Cipher.ENCRYPT_MODE,sk);byte[] enc=ci.doFinal(key.getBytes(StandardCharsets.UTF_8));
-            String blob=Base64.encodeToString(ci.getIV(),Base64.NO_WRAP)+":"+Base64.encodeToString(enc,Base64.NO_WRAP);getSharedPreferences(PREF,0).edit().putString("key_blob",blob).apply();
+            String blob=Base64.encodeToString(ci.getIV(),Base64.NO_WRAP)+":"+Base64.encodeToString(enc,Base64.NO_WRAP);getSharedPreferences(PREF,0).edit().putString("key_blob",blob).commit();
         }catch(Exception ignored){}
     }
     private String loadKey(){
