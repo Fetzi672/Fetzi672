@@ -12,28 +12,36 @@ import android.os.Process;
 import fac.license.ui.LicenseActivity;
 
 /**
- * V7 fail-closed runtime guard.
+ * V8 fail-closed runtime guard.
  *
- * Important: this provider NEVER opens UI. The visible MAIN/LAUNCHER is
- * LicenseActivity in the isolated :facgate process. Therefore the original
- * main process and its providers do not exist until verification succeeds.
+ * LicenseActivity is the visible MAIN/LAUNCHER in :facgate. The original
+ * application class remains com.nx.main.App. This provider lives only in the
+ * protected main process and never opens UI.
  *
- * When the original main process is started explicitly after VERIFY, this
- * provider is installed before CoreProvider and only permits the process when
- * a one-shot cold-start grant is present. This removes the Android background
- * activity-start race that could leave v6 stuck on the launch splash.
+ * After successful verification, :facgate writes a one-shot cold-start grant
+ * and explicitly starts the original SplashActivity. The new main process
+ * installs this provider before the original CoreProvider. The grant is
+ * consumed here, then Android continues into the untouched original
+ * Application.onCreate()/providers/root/permission chain.
  */
 public class LicenseGateProvider extends ContentProvider {
-    public static final String COLD_GRANT="fac_cold_start_grant_v7";
+    public static final String COLD_GRANT="fac_cold_start_grant_v8";
 
     @Override public boolean onCreate(){
         final Context ctx=getContext();
         if(ctx==null) return true;
         SharedPreferences p=ctx.getSharedPreferences(LicenseActivity.PREF,0);
         boolean allowed=p.getBoolean(COLD_GRANT,false) && p.getBoolean("verified",false);
-        if(allowed) return true;
+        if(allowed){
+            // Consume before the original runtime continues. A later process
+            // restart must go through the online license gate again.
+            p.edit().remove(COLD_GRANT).commit();
+            return true;
+        }
 
-        // Direct/unauthorized starts of the protected main process fail closed.
+        // Direct/unauthorized protected-main starts fail closed. The license
+        // activity itself is in :facgate, so normal app-icon launches never
+        // reach this provider until VERIFY succeeds.
         p.edit().remove(COLD_GRANT).putBoolean("verified",false).commit();
         try{ Process.killProcess(Process.myPid()); }finally{ System.exit(0); }
         return true;
@@ -48,6 +56,13 @@ public class LicenseGateProvider extends ContentProvider {
             original.setComponent(new ComponentName(ctx.getPackageName(),"com.core.activity.SplashActivity"));
             original.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_CLEAR_TASK);
             ctx.startActivity(original);
+            // LicenseActivity is running in :facgate. Terminate only that gate
+            // process after ActivityManager has accepted the protected launch.
+            new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(new Runnable(){
+                @Override public void run(){
+                    try{ Process.killProcess(Process.myPid()); }finally{ System.exit(0); }
+                }
+            },700L);
         }catch(Exception e){
             p.edit().remove(COLD_GRANT).putBoolean("verified",false).commit();
             throw new RuntimeException(e);
