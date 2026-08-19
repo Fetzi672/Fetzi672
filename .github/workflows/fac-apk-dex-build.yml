@@ -26,16 +26,20 @@ jobs:
           rm -rf fac-apk-build/out
           mkdir -p fac-apk-build/out/stubclasses fac-apk-build/out/classes fac-apk-build/out/dex
 
-          # Compile-only stub for the untouched original com.nx.main.App.
-          # It is NEVER included in classes2.dex.
+          # Compile-only stubs. Their real implementations are supplied by the
+          # untouched original APK/runtime and MUST NOT enter classes2.dex.
           javac -source 8 -target 8 -encoding UTF-8 -cp "$ANDROID_JAR" \
             -d fac-apk-build/out/stubclasses \
             $(find fac-apk-build/stubs -name '*.java' -print)
 
+          # V11 deliberately compiles only the minimum licensing surface.
           javac -source 8 -target 8 -encoding UTF-8 \
             -cp "$ANDROID_JAR:fac-apk-build/out/stubclasses" \
             -d fac-apk-build/out/classes \
-            $(find fac-apk-build/src -name '*.java' -print)
+            fac-apk-build/src/fac/license/DeviceIdentity.java \
+            fac-apk-build/src/fac/license/ui/LicenseActivity.java \
+            fac-apk-build/src/fac/license/runtime/FacAppComponentFactoryX.java \
+            fac-apk-build/src/fac/license/runtime/LicenseRuntimeGuard.java
 
           D8=$(find "$ANDROID_HOME/build-tools" -maxdepth 2 -type f -name d8 | sort -V | tail -1)
           echo "Using $D8"
@@ -45,10 +49,6 @@ jobs:
             $(find fac-apk-build/out/classes -name '*.class' -print)
 
           test -s fac-apk-build/out/dex/classes.dex
-          if strings fac-apk-build/out/dex/classes.dex | grep -q '^Lcom/nx/main/App;$'; then
-            echo 'NOTE: superclass reference is expected.'
-          fi
-          # The stub itself must not be defined in the produced DEX.
           python3 - <<'PY'
           import struct
           p='fac-apk-build/out/dex/classes.dex'
@@ -69,10 +69,16 @@ jobs:
           defs=[]
           for i in range(cs):
               ci=struct.unpack_from('<I',d,co+32*i)[0];defs.append(types[ci])
-          assert 'Lcom/nx/main/App;' not in defs, 'compile stub leaked into classes2.dex'
-          assert 'Lfac/license/FacApplication;' in defs
+          assert 'Lcom/nx/main/App;' not in defs, 'com.nx compile stub leaked into classes2.dex'
+          assert 'Landroid/support/v4/app/CoreComponentFactory;' not in defs, 'support compile stub leaked into classes2.dex'
           assert 'Lfac/license/DeviceIdentity;' in defs
-          print('DEX class integrity OK')
+          assert 'Lfac/license/ui/LicenseActivity;' in defs
+          assert 'Lfac/license/runtime/FacAppComponentFactoryX;' in defs
+          assert 'Lfac/license/runtime/LicenseRuntimeGuard;' in defs
+          forbidden=[x for x in defs if x.startswith('Lfac/license/overlay/') or x in {
+              'Lfac/license/FacApplication;','Lfac/license/LicenseGateProvider;','Lfac/license/SessionHandoff;','Lfac/license/ui/BotSettingsActivity;'}]
+          assert not forbidden, 'V11 slim DEX contains legacy classes: '+repr(forbidden)
+          print('V11 slim DEX class integrity OK')
           PY
           sha256sum fac-apk-build/out/dex/classes.dex
       - name: Upload DEX
