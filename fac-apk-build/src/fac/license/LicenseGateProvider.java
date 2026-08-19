@@ -70,7 +70,19 @@ public class LicenseGateProvider extends ContentProvider {
         app.registerActivityLifecycleCallbacks(new Application.ActivityLifecycleCallbacks(){
             @Override public void onActivityCreated(Activity activity, Bundle state) {
                 if(!"com.core.activity.SplashActivity".equals(activity.getClass().getName())) return;
-                if(activity.getSharedPreferences(PREF,0).getBoolean("verified",false)) return;
+
+                // No SplashActivity is ever allowed to continue inside the gate
+                // process. Before verification we show LicenseActivity; after
+                // verification LicenseActivity's legacy in-process launch is
+                // immediately closed while AlarmManager prepares the true cold
+                // process launch.
+                boolean verified=activity.getSharedPreferences(PREF,0)
+                                         .getBoolean("verified",false);
+                if(verified || handoffStarted) {
+                    try { activity.finish(); } catch(Exception ignored) {}
+                    return;
+                }
+
                 try {
                     Intent gate=new Intent(activity, LicenseActivity.class);
                     gate.addFlags(Intent.FLAG_ACTIVITY_NO_ANIMATION);
@@ -86,9 +98,6 @@ public class LicenseGateProvider extends ContentProvider {
             @Override public void onActivityDestroyed(Activity a){}
         });
 
-        // LicenseActivity already writes verified=true after a strict successful
-        // server response. Observe that single transition and perform a genuine
-        // process-level handoff instead of starting SplashActivity in-process.
         prefListener=new SharedPreferences.OnSharedPreferenceChangeListener(){
             @Override public void onSharedPreferenceChanged(SharedPreferences p,String key){
                 if(!"verified".equals(key) || !p.getBoolean("verified",false)) return;
@@ -114,16 +123,12 @@ public class LicenseGateProvider extends ContentProvider {
             AlarmManager am=(AlarmManager)ctx.getSystemService(Context.ALARM_SERVICE);
             if(am!=null) am.set(AlarmManager.ELAPSED_REALTIME,SystemClock.elapsedRealtime()+700L,pi);
 
-            // Give SharedPreferences.commit()/AlarmManager a moment to settle,
-            // then end the gate process. The AlarmManager launch creates a new
-            // Linux/Android process and therefore reruns the untouched original
-            // Application.onCreate + Splash permission/root initialization.
             new Handler(Looper.getMainLooper()).postDelayed(new Runnable(){
                 @Override public void run(){
                     try { Process.killProcess(Process.myPid()); }
                     finally { System.exit(0); }
                 }
-            },250L);
+            },200L);
         } catch(Exception e) {
             handoffStarted=false;
             ctx.getSharedPreferences(PREF,0).edit().remove(COLD_GRANT).putBoolean("verified",false).apply();
@@ -134,10 +139,9 @@ public class LicenseGateProvider extends ContentProvider {
         final Application app=(Application)ctx.getApplicationContext();
         app.registerActivityLifecycleCallbacks(new Application.ActivityLifecycleCallbacks(){
             @Override public void onActivityResumed(Activity activity) {
-                // Do not request overlay permission here. The untouched original
-                // Splash flow owns all permission dialogs. We merely wait until
-                // Android reports that the permission is available, then start
-                // the FAC session guard/overlay.
+                // The untouched original Splash flow owns ALL Android/root/
+                // overlay permission dialogs. FAC only waits until the overlay
+                // permission exists, then starts the session guard.
                 if(overlayStarted) return;
                 if(!activity.getSharedPreferences(PREF,0).getBoolean("verified",false)) return;
                 if(Build.VERSION.SDK_INT>=23 && !Settings.canDrawOverlays(activity)) return;
