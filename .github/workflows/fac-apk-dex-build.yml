@@ -23,12 +23,57 @@ jobs:
           set -euo pipefail
           ANDROID_JAR=$(find "$ANDROID_HOME/platforms" -maxdepth 2 -name android.jar | sort -V | tail -1)
           echo "Using $ANDROID_JAR"
-          mkdir -p fac-apk-build/out/classes fac-apk-build/out/dex
-          javac -source 8 -target 8 -encoding UTF-8 -cp "$ANDROID_JAR" -d fac-apk-build/out/classes $(find fac-apk-build/src -name '*.java' -print)
+          rm -rf fac-apk-build/out
+          mkdir -p fac-apk-build/out/stubclasses fac-apk-build/out/classes fac-apk-build/out/dex
+
+          # Compile-only stub for the untouched original com.nx.main.App.
+          # It is NEVER included in classes2.dex.
+          javac -source 8 -target 8 -encoding UTF-8 -cp "$ANDROID_JAR" \
+            -d fac-apk-build/out/stubclasses \
+            $(find fac-apk-build/stubs -name '*.java' -print)
+
+          javac -source 8 -target 8 -encoding UTF-8 \
+            -cp "$ANDROID_JAR:fac-apk-build/out/stubclasses" \
+            -d fac-apk-build/out/classes \
+            $(find fac-apk-build/src -name '*.java' -print)
+
           D8=$(find "$ANDROID_HOME/build-tools" -maxdepth 2 -type f -name d8 | sort -V | tail -1)
           echo "Using $D8"
-          "$D8" --min-api 16 --output fac-apk-build/out/dex $(find fac-apk-build/out/classes -name '*.class' -print)
+          "$D8" --min-api 16 --lib "$ANDROID_JAR" \
+            --classpath fac-apk-build/out/stubclasses \
+            --output fac-apk-build/out/dex \
+            $(find fac-apk-build/out/classes -name '*.class' -print)
+
           test -s fac-apk-build/out/dex/classes.dex
+          if strings fac-apk-build/out/dex/classes.dex | grep -q '^Lcom/nx/main/App;$'; then
+            echo 'NOTE: superclass reference is expected.'
+          fi
+          # The stub itself must not be defined in the produced DEX.
+          python3 - <<'PY'
+          import struct
+          p='fac-apk-build/out/dex/classes.dex'
+          d=open(p,'rb').read()
+          ss,so=struct.unpack_from('<II',d,0x38)
+          ts,to=struct.unpack_from('<II',d,0x40)
+          cs,co=struct.unpack_from('<II',d,0x60)
+          def uleb(o):
+              v=s=0
+              while True:
+                  b=d[o];o+=1;v|=(b&127)<<s
+                  if b<128:return v,o
+                  s+=7
+          def st(i):
+              o=struct.unpack_from('<I',d,so+4*i)[0];_,o=uleb(o);e=d.index(b'\0',o);return d[o:e].decode('utf-8','replace')
+          strings_=[st(i) for i in range(ss)]
+          types=[strings_[struct.unpack_from('<I',d,to+4*i)[0]] for i in range(ts)]
+          defs=[]
+          for i in range(cs):
+              ci=struct.unpack_from('<I',d,co+32*i)[0];defs.append(types[ci])
+          assert 'Lcom/nx/main/App;' not in defs, 'compile stub leaked into classes2.dex'
+          assert 'Lfac/license/FacApplication;' in defs
+          assert 'Lfac/license/DeviceIdentity;' in defs
+          print('DEX class integrity OK')
+          PY
           sha256sum fac-apk-build/out/dex/classes.dex
       - name: Upload DEX
         uses: actions/upload-artifact@v4
