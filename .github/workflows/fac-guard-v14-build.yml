@@ -1,4 +1,4 @@
-name: FAC Guard V15.2 ImGui Build
+name: FAC Guard V15.2.1 ImGui Build
 
 on:
   push:
@@ -19,7 +19,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Build FAC Guard V15.2 ImGui shell
+      - name: Build FAC Guard V15.2.1 ImGui shell
         shell: bash
         run: |
           set -euo pipefail
@@ -73,8 +73,8 @@ jobs:
             --manifest fac-guard-android/AndroidManifest.xml \
             --min-sdk-version 23 \
             --target-sdk-version 28 \
-            --version-code 152 \
-            --version-name 15.2 \
+            --version-code 1521 \
+            --version-name 15.2.1 \
             "${RES_FILES[@]}" \
             -o fac-guard-android/out/base.apk
 
@@ -85,32 +85,35 @@ jobs:
 
           PASS=$(openssl rand -hex 24)
           keytool -genkeypair -noprompt \
-            -keystore fac-guard-android/out/fac-guard-v15-2-test.jks \
+            -keystore fac-guard-android/out/fac-guard-v15-2-1-test.jks \
             -storepass "$PASS" -keypass "$PASS" \
             -alias facguard -keyalg RSA -keysize 2048 -validity 3650 \
-            -dname "CN=FAC Guard V15.2 Test,O=FAC"
+            -dname "CN=FAC Guard V15.2.1 Test,O=FAC"
 
           "$APKSIGNER" sign \
-            --ks fac-guard-android/out/fac-guard-v15-2-test.jks \
+            --ks fac-guard-android/out/fac-guard-v15-2-1-test.jks \
             --ks-pass "pass:$PASS" --key-pass "pass:$PASS" \
-            --out fac-guard-android/dist/FAC_Guard_v15_2_shell.apk \
+            --out fac-guard-android/dist/FAC_Guard_v15_2_1_shell.apk \
             fac-guard-android/out/aligned.apk
 
-          "$APKSIGNER" verify --verbose --print-certs fac-guard-android/dist/FAC_Guard_v15_2_shell.apk
-          "$AAPT2" dump badging fac-guard-android/dist/FAC_Guard_v15_2_shell.apk | head -25
-          sha256sum fac-guard-android/dist/FAC_Guard_v15_2_shell.apk | tee fac-guard-android/dist/FAC_Guard_v15_2_shell.sha256
+          "$APKSIGNER" verify --verbose --print-certs fac-guard-android/dist/FAC_Guard_v15_2_1_shell.apk
+          "$AAPT2" dump badging fac-guard-android/dist/FAC_Guard_v15_2_1_shell.apk | head -25
+          sha256sum fac-guard-android/dist/FAC_Guard_v15_2_1_shell.apk | tee fac-guard-android/dist/FAC_Guard_v15_2_1_shell.sha256
           printf '%s\n' "$IMGUI_SHA" > fac-guard-android/dist/IMGUI_COMMIT.txt
           printf '%s\n' "$NOTIFY_SHA" > fac-guard-android/dist/IMGUI_NOTIFY_COMMIT.txt
           cp fac-guard-android/out/imgui-notify-src/LICENSE fac-guard-android/dist/IMGUI_NOTIFY_LICENSE.txt
 
           cat > fac-guard-android/dist/BUILD_INFO.txt <<EOF
-          FAC Guard V15.2 ImGui shell
+          FAC Guard V15.2.1 ImGui shell
           Guard package: fac.guard
           Protected package: com.cocfz.com.freescript
           Native UI: Dear ImGui + OpenGL ES 3 + imgui-notify
           ABIs: armeabi-v7a, arm64-v8a, x86, x86_64
           Dear ImGui commit: $IMGUI_SHA
           imgui-notify commit: $NOTIFY_SHA
+          Runtime staging hard timeout: 20 seconds including stdin transfer
+          Package Manager hard timeout: 30 seconds per install path
+          Package Manager fallback: cmd package install
           Bot settings path: /storage/emulated/0/uix/zh1.txt
           Accessibility English mask: packaged
           Launcher visibility: setup-only alias, auto-hidden after successful authorization
@@ -120,9 +123,9 @@ jobs:
           Original runtime modification: NONE
           EOF
 
-      - name: Upload FAC Guard V15.2 shell
+      - name: Upload FAC Guard V15.2.1 shell
         uses: actions/upload-artifact@v4
         with:
-          name: FAC-Guard-v15-2-shell
+          name: FAC-Guard-v15-2-1-shell
           path: fac-guard-android/dist/*
           if-no-files-found: error
