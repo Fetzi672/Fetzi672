@@ -2,12 +2,15 @@ package fac.guard;
 
 import android.accessibilityservice.AccessibilityService;
 import android.accessibilityservice.AccessibilityServiceInfo;
+import android.graphics.PixelFormat;
 import android.graphics.Rect;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.SystemClock;
 import android.util.Base64;
 import android.util.DisplayMetrics;
+import android.view.Gravity;
+import android.view.WindowManager;
 import android.view.accessibility.AccessibilityEvent;
 import android.view.accessibility.AccessibilityNodeInfo;
 import java.nio.charset.StandardCharsets;
@@ -15,16 +18,21 @@ import java.util.*;
 
 /**
  * Reads only accessibility text owned by com.cocfz.com.freescript. Chinese and
- * legacy Aiwan/cocfz branding is covered at the same screen coordinates and FAC
- * renders an English replacement above it. The protected app is never modified.
+ * legacy Aiwan/cocfz branding is covered at the same screen coordinates by a
+ * trusted TYPE_ACCESSIBILITY_OVERLAY. This overlay is NOT_TOUCHABLE and does
+ * not trigger Android's untrusted-SAW touch blocking behavior.
  */
 public final class TextMaskAccessibilityService extends AccessibilityService {
     private static final int MAX_NODES=280;
     private static final long TRANSIENT_MS=3200L;
+    private static volatile TextMaskAccessibilityService active;
+
     private final Handler main=new Handler(Looper.getMainLooper());
     private final Runnable scanRunnable=this::scanNow;
     private final ArrayList<TransientMask> transientMasks=new ArrayList<>();
     private TextTranslator translator;
+    private WindowManager maskWm;
+    private AccessibilityMaskView maskView;
 
     private static final class TransientMask{
         final Rect bounds;final String text;final long until;
@@ -33,6 +41,7 @@ public final class TextMaskAccessibilityService extends AccessibilityService {
 
     @Override protected void onServiceConnected(){
         super.onServiceConnected();
+        active=this;
         translator=new TextTranslator(this);
         AccessibilityServiceInfo i=new AccessibilityServiceInfo();
         i.eventTypes=AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED
@@ -45,8 +54,47 @@ public final class TextMaskAccessibilityService extends AccessibilityService {
         i.packageNames=new String[]{RootOps.TARGET_PACKAGE};
         i.flags=AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS|AccessibilityServiceInfo.FLAG_INCLUDE_NOT_IMPORTANT_VIEWS;
         setServiceInfo(i);
-        FloatingMenuController.notifySuccess(this,"English UI","Chinese/Aiwan runtime text mask is active");
+        ensureMaskOverlay();
+        FloatingMenuController.notifySuccess(this,"English UI","Trusted English text mask is active");
     }
+
+    private void ensureMaskOverlay(){
+        if(maskView!=null)return;
+        try{
+            maskWm=(WindowManager)getSystemService(WINDOW_SERVICE);
+            if(maskWm==null)return;
+            AccessibilityMaskView v=new AccessibilityMaskView(this);
+            WindowManager.LayoutParams p=new WindowManager.LayoutParams(
+                WindowManager.LayoutParams.MATCH_PARENT,
+                WindowManager.LayoutParams.MATCH_PARENT,
+                WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+                    |WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+                    |WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
+                    |WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
+                    |WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+                PixelFormat.TRANSLUCENT);
+            p.gravity=Gravity.TOP|Gravity.START;
+            p.alpha=1.0f;
+            p.softInputMode=WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING;
+            maskWm.addView(v,p);
+            maskView=v;
+        }catch(Exception ignored){maskView=null;maskWm=null;}
+    }
+
+    private void setMaskProtocol(String protocol){
+        main.post(()->{
+            ensureMaskOverlay();
+            if(maskView!=null)maskView.setProtocol(protocol==null?"":protocol);
+        });
+    }
+
+    public static void publishMask(String protocol){
+        TextMaskAccessibilityService s=active;
+        if(s!=null)s.setMaskProtocol(protocol);
+    }
+
+    public static void clearMask(){publishMask("");}
 
     @Override public void onAccessibilityEvent(AccessibilityEvent event){
         if(event==null||event.getPackageName()==null)return;
@@ -83,17 +131,32 @@ public final class TextMaskAccessibilityService extends AccessibilityService {
         FloatingMenuController.notifyInfo(this,"FAC Runtime",english);
     }
 
-    @Override public void onInterrupt(){FloatingMenuController.updateTextMask(this,"");}
+    @Override public void onInterrupt(){setMaskProtocol("");}
 
     @Override public boolean onUnbind(android.content.Intent intent){
-        FloatingMenuController.updateTextMask(this,"");
+        setMaskProtocol("");
         synchronized(transientMasks){transientMasks.clear();}
+        removeMaskOverlay();
+        if(active==this)active=null;
         return super.onUnbind(intent);
+    }
+
+    @Override public void onDestroy(){
+        main.removeCallbacksAndMessages(null);
+        removeMaskOverlay();
+        if(active==this)active=null;
+        super.onDestroy();
+    }
+
+    private void removeMaskOverlay(){
+        AccessibilityMaskView v=maskView;maskView=null;
+        WindowManager w=maskWm;maskWm=null;
+        if(v!=null&&w!=null)try{w.removeView(v);}catch(Exception ignored){}
     }
 
     private void scanNow(){
         if(!LicenseStore.isSessionActive(this)||!LicenseStore.isLocallyValid(this)||!RootOps.isTargetRunning()){
-            FloatingMenuController.updateTextMask(this,"");return;
+            setMaskProtocol("");return;
         }
         StringBuilder out=new StringBuilder(12288);
         HashSet<String> seen=new HashSet<>();
@@ -133,7 +196,7 @@ public final class TextMaskAccessibilityService extends AccessibilityService {
                 count=appendMask(out,seen,m.bounds,m.text,false,count);
             }
         }
-        FloatingMenuController.updateTextMask(this,out.toString());
+        setMaskProtocol(out.toString());
         if(hasTransient())main.postDelayed(scanRunnable,180L);
     }
 
