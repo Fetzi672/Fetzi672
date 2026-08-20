@@ -24,4 +24,8 @@ target_include_directories(facui PRIVATE
   ${IMGUI_NOTIFY_DIR}/example/src
 )
 target_compile_definitions(facui PRIVATE IMGUI_IMPL_OPENGL_ES3)
+# imgui-notify upstream uses runtime strings with ImGui::Text/TextColored.
+# Android NDK enables -Werror=format-security globally; keep the upstream
+# header unchanged and relax only this warning for the FAC native UI target.
+target_compile_options(facui PRIVATE -Wno-format-security)
 target_link_libraries(facui GLESv3 log android)
