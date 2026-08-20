@@ -6,8 +6,9 @@ import java.nio.charset.StandardCharsets;
 
 public final class RootOps {
     public static final String TARGET_PACKAGE="com.cocfz.com.freescript";
-    private static final String KEEPALIVE="/data/local/tmp/fac_guard_v14_keepalive.sh";
-    private static final String KEEPALIVE_PID="/data/local/tmp/fac_guard_v14_keepalive.pid";
+    private static final String KEEPALIVE="/data/local/tmp/fac_guard_v15_keepalive.sh";
+    private static final String KEEPALIVE_PID="/data/local/tmp/fac_guard_v15_keepalive.pid";
+    private static final String INSTALL_TEMP="/data/local/tmp/fac_runtime_v15.apk";
     private RootOps() {}
 
     public static boolean hasRoot(){
@@ -22,7 +23,23 @@ public final class RootOps {
         try{return run("pidof "+TARGET_PACKAGE).trim().length()>0;}catch(Exception e){return false;}
     }
 
-    public static Process startTargetMonitor()throws Exception{
+    public static boolean installPackage(File privateApk){
+        if(privateApk==null||!privateApk.isFile())return false;
+        try{
+            String src=q(privateApk.getAbsolutePath());
+            String tmp=q(INSTALL_TEMP);
+            String cmd="rm -f "+tmp+"; cp "+src+" "+tmp+"; chmod 0644 "+tmp+
+                "; pm install -r "+tmp+"; RC=$?; rm -f "+tmp+"; exit $RC";
+            String result=run(cmd);
+            return result.contains("Success")||result.trim().length()==0;
+        }catch(Exception e){return false;}
+    }
+
+    public static void removeInstallTemp(){
+        try{run("rm -f "+q(INSTALL_TEMP));}catch(Exception ignored){}
+    }
+
+    public static java.lang.Process startTargetMonitor()throws Exception{
         String cmd="while true; do if pidof "+TARGET_PACKAGE+" >/dev/null 2>&1; then echo RUN; else echo STOP; fi; sleep 0.5; done";
         return Runtime.getRuntime().exec(new String[]{"su","-c",cmd});
     }
@@ -37,7 +54,7 @@ public final class RootOps {
     }
 
     public static boolean installKeepalive(Context c){
-        File local=new File(c.getFilesDir(),"fac_guard_v14_keepalive.sh");
+        File local=new File(c.getFilesDir(),"fac_guard_v15_keepalive.sh");
         try{
             String pkg=c.getPackageName();
             String script="#!/system/bin/sh\n"+
@@ -66,7 +83,7 @@ public final class RootOps {
     private static String q(String s){return "'"+s.replace("'","'\\''")+"'";}
 
     private static String run(String command)throws Exception{
-        Process p=Runtime.getRuntime().exec(new String[]{"su","-c",command});
+        java.lang.Process p=Runtime.getRuntime().exec(new String[]{"su","-c",command});
         ByteArrayOutputStream out=new ByteArrayOutputStream();
         InputStream in=p.getInputStream();byte[] b=new byte[1024];int n,total=0;
         while((n=in.read(b))>0&&total<8192){int take=Math.min(n,8192-total);out.write(b,0,take);total+=take;}
