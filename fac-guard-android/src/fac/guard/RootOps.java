@@ -4,14 +4,24 @@ import android.content.Context;
 import android.os.SystemClock;
 import java.io.*;
 import java.nio.charset.StandardCharsets;
+import java.util.concurrent.atomic.AtomicReference;
 
 public final class RootOps {
     public static final String TARGET_PACKAGE="com.cocfz.com.freescript";
     private static final String KEEPALIVE="/data/local/tmp/fac_guard_v15_keepalive.sh";
     private static final String KEEPALIVE_PID="/data/local/tmp/fac_guard_v15_keepalive.pid";
     private static final String INSTALL_TEMP="/data/local/tmp/fac_runtime_v15.apk";
+    private static final long STAGE_TIMEOUT_MS=20000L;
+    private static final long INSTALL_TIMEOUT_MS=30000L;
     private static volatile String lastInstallError="";
     private RootOps() {}
+
+    public interface InstallProgress { void onStage(String text); }
+
+    private static final class CommandResult {
+        final int rc; final String out; final boolean timedOut;
+        CommandResult(int r,String o,boolean t){rc=r;out=o==null?"":o;timedOut=t;}
+    }
 
     public static boolean hasRoot(){
         try{return run("id").contains("uid=0");}catch(Exception e){return false;}
@@ -25,7 +35,6 @@ public final class RootOps {
         try{return run("pidof "+TARGET_PACKAGE).trim().length()>0;}catch(Exception e){return false;}
     }
 
-    /** Grants only the two UI privileges V15.2 needs on the rooted emulator. */
     public static boolean enableUiPrivileges(Context c){
         if(c==null)return false;
         try{
@@ -51,56 +60,139 @@ public final class RootOps {
         }catch(Exception e){return false;}
     }
 
+    public static boolean installPackage(File privateApk){return installPackage(privateApk,null);}
+
     /**
-     * Streams the verified plaintext APK through su stdin. Root never has to
-     * traverse /data/user/0/fac.guard, avoiding the MuMu/SELinux "denied" path
-     * seen in V15. The whole install is capped at ~40 seconds.
+     * V15.2.1 separates staging and Package Manager installation. The 20 second
+     * staging timeout includes the complete 42 MB stdin transfer, so a blocked
+     * MuMu root pipe can no longer hang forever before the old install timeout
+     * even begins. Package Manager then receives its own 30 second timeout and
+     * one independent cmd-package fallback.
      */
-    public static boolean installPackage(File privateApk){
+    public static boolean installPackage(File privateApk,InstallProgress progress){
         lastInstallError="";
-        if(privateApk==null||!privateApk.isFile()){lastInstallError="Runtime payload file is missing.";return false;}
-        java.lang.Process p=null;
+        if(privateApk==null||!privateApk.isFile()){
+            lastInstallError="Runtime payload file is missing.";return false;
+        }
         try{
-            String tmp=q(INSTALL_TEMP);
-            String cmd="rm -f "+tmp+
-                "; cat > "+tmp+
-                " && chmod 0644 "+tmp+
-                " && (restorecon "+tmp+" >/dev/null 2>&1 || true)"+
-                " && pm install --user 0 -r "+tmp+
-                "; RC=$?; rm -f "+tmp+"; exit $RC";
-            ProcessBuilder pb=new ProcessBuilder("su","-c",cmd);pb.redirectErrorStream(true);p=pb.start();
+            stage(progress,"Staging original runtime...");
+            if(!stagePayload(privateApk))return false;
 
-            try(FileInputStream in=new FileInputStream(privateApk);OutputStream rootIn=p.getOutputStream()){
-                byte[] buf=new byte[128*1024];int n;
-                while((n=in.read(buf))>0)rootIn.write(buf,0,n);
-                rootIn.flush();
-            }
+            stage(progress,"Installing original runtime...");
+            CommandResult primary=runCommandTimed("pm install -r "+q(INSTALL_TEMP),INSTALL_TIMEOUT_MS);
+            if(primary.rc==0&&!primary.timedOut)return true;
 
-            long deadline=SystemClock.elapsedRealtime()+40000L;
-            while(true){
-                try{
-                    int rc=p.exitValue();
-                    String out=readBounded(p.getInputStream(),16384).trim();
-                    if(rc==0&&(out.contains("Success")||out.length()==0))return true;
-                    lastInstallError="Package Manager denied installation"+(out.length()>0?": "+out:"");
-                    return false;
-                }catch(IllegalThreadStateException stillRunning){
-                    if(SystemClock.elapsedRealtime()>=deadline){
-                        lastInstallError="Runtime installation timed out after 40 seconds.";
-                        try{p.destroy();}catch(Exception ignored){}
-                        return false;
-                    }
-                    SystemClock.sleep(100L);
-                }
+            stage(progress,"Retrying Android Package Manager...");
+            CommandResult fallback=runCommandTimed("cmd package install -r --user 0 "+q(INSTALL_TEMP),INSTALL_TIMEOUT_MS);
+            if(fallback.rc==0&&!fallback.timedOut)return true;
+
+            String first=clean(primary.out),second=clean(fallback.out);
+            if(primary.timedOut&&fallback.timedOut){
+                lastInstallError="Runtime installation timed out in both Package Manager paths.";
+            }else if(fallback.timedOut){
+                lastInstallError="Fallback Package Manager timed out after 30 seconds"+(first.length()>0?". First result: "+first:"");
+            }else{
+                String detail=second.length()>0?second:first;
+                lastInstallError="Package Manager denied installation"+(detail.length()>0?": "+detail:"");
             }
+            return false;
         }catch(Exception e){
             lastInstallError=e.getMessage()==null?"Root runtime installation failed.":e.getMessage();
-            try{if(p!=null)p.destroy();}catch(Exception ignored){}
             return false;
         }finally{
             removeInstallTemp();
         }
     }
+
+    private static boolean stagePayload(final File privateApk){
+        java.lang.Process p=null;
+        Thread writer=null,drainer=null;
+        final AtomicReference<String> writerError=new AtomicReference<String>();
+        final ByteArrayOutputStream captured=new ByteArrayOutputStream();
+        try{
+            String cmd="rm -f "+q(INSTALL_TEMP)+"; cat > "+q(INSTALL_TEMP)+
+                "; RC=$?; if [ $RC -eq 0 ]; then chmod 0644 "+q(INSTALL_TEMP)+
+                "; (restorecon "+q(INSTALL_TEMP)+" >/dev/null 2>&1 || true); fi; exit $RC";
+            ProcessBuilder pb=new ProcessBuilder("su","-c",cmd);pb.redirectErrorStream(true);p=pb.start();
+            final java.lang.Process proc=p;
+
+            drainer=new Thread(new Runnable(){@Override public void run(){
+                try{drain(proc.getInputStream(),captured,16384);}catch(Exception ignored){}
+            }},"FAC-Stage-Output");
+            drainer.start();
+
+            writer=new Thread(new Runnable(){@Override public void run(){
+                try(FileInputStream in=new FileInputStream(privateApk);OutputStream out=proc.getOutputStream()){
+                    byte[] buf=new byte[128*1024];int n;
+                    while((n=in.read(buf))>0)out.write(buf,0,n);
+                    out.flush();
+                }catch(Exception e){writerError.set(e.getMessage()==null?e.getClass().getSimpleName():e.getMessage());}
+            }},"FAC-Stage-Writer");
+            writer.start();
+
+            long deadline=SystemClock.elapsedRealtime()+STAGE_TIMEOUT_MS;
+            int rc;
+            while(true){
+                try{rc=p.exitValue();break;}
+                catch(IllegalThreadStateException running){
+                    if(SystemClock.elapsedRealtime()>=deadline){
+                        lastInstallError="Runtime staging timed out after 20 seconds.";
+                        try{p.getOutputStream().close();}catch(Exception ignored){}
+                        try{p.destroy();}catch(Exception ignored){}
+                        if(writer!=null)writer.interrupt();
+                        return false;
+                    }
+                    SystemClock.sleep(50L);
+                }
+            }
+            if(writer!=null)try{writer.join(1200L);}catch(InterruptedException ignored){}
+            if(drainer!=null)try{drainer.join(600L);}catch(InterruptedException ignored){}
+            String out=clean(new String(captured.toByteArray(),StandardCharsets.UTF_8));
+            String we=writerError.get();
+            if(rc!=0||we!=null){
+                lastInstallError="Runtime staging failed"+(we!=null?": "+we:(out.length()>0?": "+out:""));
+                return false;
+            }
+            return true;
+        }catch(Exception e){
+            lastInstallError="Runtime staging failed: "+(e.getMessage()==null?e.getClass().getSimpleName():e.getMessage());
+            try{if(p!=null)p.destroy();}catch(Exception ignored){}
+            return false;
+        }
+    }
+
+    private static CommandResult runCommandTimed(String command,long timeoutMs){
+        java.lang.Process p=null;Thread drainer=null;final ByteArrayOutputStream captured=new ByteArrayOutputStream();
+        try{
+            ProcessBuilder pb=new ProcessBuilder("su","-c",command);pb.redirectErrorStream(true);p=pb.start();
+            final java.lang.Process proc=p;
+            drainer=new Thread(new Runnable(){@Override public void run(){
+                try{drain(proc.getInputStream(),captured,32768);}catch(Exception ignored){}
+            }},"FAC-PM-Output");
+            drainer.start();
+            long deadline=SystemClock.elapsedRealtime()+timeoutMs;
+            int rc;
+            while(true){
+                try{rc=p.exitValue();break;}
+                catch(IllegalThreadStateException running){
+                    if(SystemClock.elapsedRealtime()>=deadline){
+                        try{p.destroy();}catch(Exception ignored){}
+                        if(drainer!=null)try{drainer.join(500L);}catch(InterruptedException ignored){}
+                        return new CommandResult(-1,new String(captured.toByteArray(),StandardCharsets.UTF_8),true);
+                    }
+                    SystemClock.sleep(75L);
+                }
+            }
+            if(drainer!=null)try{drainer.join(700L);}catch(InterruptedException ignored){}
+            return new CommandResult(rc,new String(captured.toByteArray(),StandardCharsets.UTF_8),false);
+        }catch(Exception e){
+            try{if(p!=null)p.destroy();}catch(Exception ignored){}
+            return new CommandResult(-1,e.getMessage(),false);
+        }
+    }
+
+    private static void stage(InstallProgress p,String text){try{if(p!=null)p.onStage(text);}catch(Exception ignored){}}
+    private static String clean(String s){return s==null?"":s.replace('\n',' ').replace('\r',' ').trim();}
 
     public static String lastInstallError(){return lastInstallError==null?"":lastInstallError;}
 
@@ -117,8 +209,7 @@ public final class RootOps {
         try{
             String pkg=c.getPackageName();
             String cmd="am start -n "+pkg+"/.MainActivityV152 --activity-clear-top --ez intercepted true --es reason "+q(reason==null?"blocked":reason);
-            run(cmd);
-            return true;
+            run(cmd);return true;
         }catch(Exception e){return false;}
     }
 
@@ -144,17 +235,16 @@ public final class RootOps {
     }
 
     public static void stopKeepalive(){
-        try{
-            run("if [ -f "+KEEPALIVE_PID+" ]; then P=$(cat "+KEEPALIVE_PID+" 2>/dev/null); [ -n \"$P\" ] && kill $P >/dev/null 2>&1 || true; fi; rm -f "+KEEPALIVE_PID);
-        }catch(Exception ignored){}
+        try{run("if [ -f "+KEEPALIVE_PID+" ]; then P=$(cat "+KEEPALIVE_PID+" 2>/dev/null); [ -n \"$P\" ] && kill $P >/dev/null 2>&1 || true; fi; rm -f "+KEEPALIVE_PID);}catch(Exception ignored){}
     }
 
     private static String q(String s){return "'"+s.replace("'","'\\''")+"'";}
 
-    private static String readBounded(InputStream in,int limit)throws IOException{
-        ByteArrayOutputStream out=new ByteArrayOutputStream();byte[] b=new byte[1024];int n,total=0;
-        while((n=in.read(b))>0&&total<limit){int take=Math.min(n,limit-total);out.write(b,0,take);total+=take;}
-        return new String(out.toByteArray(),StandardCharsets.UTF_8);
+    private static void drain(InputStream in,ByteArrayOutputStream capture,int limit)throws IOException{
+        byte[] b=new byte[1024];int n,total=0;
+        while((n=in.read(b))>0){
+            if(total<limit){int take=Math.min(n,limit-total);capture.write(b,0,take);total+=take;}
+        }
     }
 
     private static String run(String command)throws Exception{
