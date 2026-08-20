@@ -13,15 +13,7 @@ import javax.crypto.CipherInputStream;
 import javax.crypto.spec.GCMParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
 
-/**
- * FAC Guard V15 runtime payload manager.
- *
- * The known-good original APK is embedded in the Guard APK as an AES-GCM
- * encrypted binary asset named fac_runtime.bin. It is never repacked or
- * re-signed: after decryption we verify both its exact APK SHA-256 and its
- * original signing certificate before root installs those exact plaintext
- * bytes as com.cocfz.com.freescript.
- */
+/** FAC Guard V15.2.1 encrypted original-runtime payload manager. */
 public final class PayloadManager {
     private static final String ASSET="fac_runtime.bin";
     private static final byte[] MAGIC=new byte[]{'F','A','C','P','1','5','0','1'};
@@ -35,6 +27,7 @@ public final class PayloadManager {
     private static final String K3="AUFNhMPoacgu";
     private static final String K4="V4RYdYs=";
 
+    public interface ProgressCallback { void onProgress(String text); }
     private PayloadManager() {}
 
     public static boolean isExpectedRuntimeInstalled(Context c){
@@ -48,9 +41,14 @@ public final class PayloadManager {
         try{c.getPackageManager().getPackageInfo(RootOps.TARGET_PACKAGE,0);return true;}catch(Exception e){return false;}
     }
 
-    /** @return true when V15 had to install/restore the embedded runtime. */
-    public static boolean ensureInstalled(Context c)throws Exception{
-        if(isExpectedRuntimeInstalled(c))return false;
+    public static boolean ensureInstalled(Context c)throws Exception{return ensureInstalled(c,null);}
+
+    /** @return true when V15.2.1 had to install/restore the embedded runtime. */
+    public static boolean ensureInstalled(Context c,ProgressCallback progress)throws Exception{
+        if(isExpectedRuntimeInstalled(c)){
+            progress(progress,"Original runtime signer verified.");
+            return false;
+        }
         if(isAnyRuntimeInstalled(c)){
             throw new SecurityException("Installed original package has an unexpected signing certificate. Remove the modified package before FAC can restore the original runtime.");
         }
@@ -59,19 +57,28 @@ public final class PayloadManager {
         File outFile=new File(c.getCacheDir(),"fac_runtime_v15.apk");
         if(outFile.exists())outFile.delete();
         try{
+            progress(progress,"Decrypting embedded original runtime...");
             decryptAndVerify(c,outFile);
+            progress(progress,"Runtime SHA-256 verified.");
             verifyArchive(c,outFile);
-            if(!RootOps.installPackage(outFile)){
+            progress(progress,"Original signing certificate verified.");
+            if(!RootOps.installPackage(outFile,new RootOps.InstallProgress(){
+                @Override public void onStage(String text){progress(progress,text);}
+            })){
                 String why=RootOps.lastInstallError();
                 throw new IOException(why.length()==0?"Root package installation failed.":why);
             }
+            progress(progress,"Verifying installed runtime signer...");
             if(!isExpectedRuntimeInstalled(c))throw new SecurityException("Installed runtime signature verification failed.");
+            progress(progress,"Original runtime installed and verified.");
             return true;
         }finally{
             try{outFile.delete();}catch(Exception ignored){}
             RootOps.removeInstallTemp();
         }
     }
+
+    private static void progress(ProgressCallback p,String text){try{if(p!=null)p.onProgress(text);}catch(Exception ignored){}}
 
     private static void decryptAndVerify(Context c,File dst)throws Exception{
         InputStream raw=c.getAssets().open(ASSET);
