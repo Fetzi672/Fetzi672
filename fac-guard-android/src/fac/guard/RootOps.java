@@ -47,7 +47,7 @@ public final class RootOps {
     public static boolean openGuardUi(Context c,String reason){
         try{
             String pkg=c.getPackageName();
-            String cmd="am start -n "+pkg+"/.MainActivity --activity-clear-top --ez intercepted true --es reason "+q(reason==null?"blocked":reason);
+            String cmd="am start -n "+pkg+"/.MainActivityV152 --activity-clear-top --ez intercepted true --es reason "+q(reason==null?"blocked":reason);
             run(cmd);
             return true;
         }catch(Exception e){return false;}
