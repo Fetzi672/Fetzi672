@@ -1,4 +1,4 @@
-name: FAC Guard V14 Build
+name: FAC Guard V15.2 ImGui Build
 
 on:
   push:
@@ -19,19 +19,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Build FAC Guard V14 APK
+      - name: Build FAC Guard V15.2 ImGui shell
         shell: bash
         run: |
           set -euo pipefail
           ANDROID_JAR=$(find "$ANDROID_HOME/platforms" -maxdepth 2 -name android.jar | sort -V | tail -1)
           BUILD_TOOLS=$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)
+          NDK=$(find "$ANDROID_HOME/ndk" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)
           AAPT2="$BUILD_TOOLS/aapt2"
           D8="$BUILD_TOOLS/d8"
           ZIPALIGN="$BUILD_TOOLS/zipalign"
           APKSIGNER="$BUILD_TOOLS/apksigner"
 
           rm -rf fac-guard-android/out fac-guard-android/dist
-          mkdir -p fac-guard-android/out/classes fac-guard-android/out/dex fac-guard-android/dist
+          mkdir -p fac-guard-android/out/classes fac-guard-android/out/dex fac-guard-android/out/apk-root/lib fac-guard-android/dist
 
           javac -source 8 -target 8 -encoding UTF-8 \
             -cp "$ANDROID_JAR" \
@@ -43,55 +44,71 @@ jobs:
             $(find fac-guard-android/out/classes -name '*.class' -print)
           test -s fac-guard-android/out/dex/classes.dex
 
+          git clone --depth 1 https://github.com/ocornut/imgui.git fac-guard-android/out/imgui-src
+          IMGUI_SHA=$(git -C fac-guard-android/out/imgui-src rev-parse HEAD)
+          echo "Dear ImGui commit: $IMGUI_SHA"
+
+          for ABI in armeabi-v7a arm64-v8a x86 x86_64; do
+            B="fac-guard-android/out/native-$ABI"
+            cmake -S fac-guard-android/native -B "$B" -G Ninja \
+              -DCMAKE_TOOLCHAIN_FILE="$NDK/build/cmake/android.toolchain.cmake" \
+              -DANDROID_ABI="$ABI" \
+              -DANDROID_PLATFORM=android-23 \
+              -DCMAKE_BUILD_TYPE=Release \
+              -DIMGUI_DIR="$GITHUB_WORKSPACE/fac-guard-android/out/imgui-src"
+            cmake --build "$B" --config Release
+            mkdir -p "fac-guard-android/out/apk-root/lib/$ABI"
+            cp "$B/libfacui.so" "fac-guard-android/out/apk-root/lib/$ABI/libfacui.so"
+          done
+
           "$AAPT2" link \
             -I "$ANDROID_JAR" \
             --manifest fac-guard-android/AndroidManifest.xml \
             --min-sdk-version 23 \
             --target-sdk-version 28 \
-            --version-code 14 \
-            --version-name 14.0 \
+            --version-code 152 \
+            --version-name 15.2 \
             -o fac-guard-android/out/base.apk
 
           cp fac-guard-android/out/base.apk fac-guard-android/out/unaligned.apk
           (cd fac-guard-android/out/dex && zip -q -j ../unaligned.apk classes.dex)
+          (cd fac-guard-android/out/apk-root && zip -q -r ../unaligned.apk lib)
           "$ZIPALIGN" -f 4 fac-guard-android/out/unaligned.apk fac-guard-android/out/aligned.apk
 
           PASS=$(openssl rand -hex 24)
           keytool -genkeypair -noprompt \
-            -keystore fac-guard-android/out/fac-guard-v14-test.jks \
+            -keystore fac-guard-android/out/fac-guard-v15-2-test.jks \
             -storepass "$PASS" -keypass "$PASS" \
             -alias facguard -keyalg RSA -keysize 2048 -validity 3650 \
-            -dname "CN=FAC Guard V14 Test,O=FAC"
+            -dname "CN=FAC Guard V15.2 Test,O=FAC"
 
           "$APKSIGNER" sign \
-            --ks fac-guard-android/out/fac-guard-v14-test.jks \
+            --ks fac-guard-android/out/fac-guard-v15-2-test.jks \
             --ks-pass "pass:$PASS" --key-pass "pass:$PASS" \
-            --out fac-guard-android/dist/FAC_Guard_v14.apk \
+            --out fac-guard-android/dist/FAC_Guard_v15_2_shell.apk \
             fac-guard-android/out/aligned.apk
 
-          "$APKSIGNER" verify --verbose --print-certs fac-guard-android/dist/FAC_Guard_v14.apk
-          "$AAPT2" dump badging fac-guard-android/dist/FAC_Guard_v14.apk | head -20
-          sha256sum fac-guard-android/dist/FAC_Guard_v14.apk | tee fac-guard-android/dist/FAC_Guard_v14.sha256
-          cp fac-guard-android/README.md fac-guard-android/dist/README.md
+          "$APKSIGNER" verify --verbose --print-certs fac-guard-android/dist/FAC_Guard_v15_2_shell.apk
+          "$AAPT2" dump badging fac-guard-android/dist/FAC_Guard_v15_2_shell.apk | head -20
+          sha256sum fac-guard-android/dist/FAC_Guard_v15_2_shell.apk | tee fac-guard-android/dist/FAC_Guard_v15_2_shell.sha256
+          printf '%s\n' "$IMGUI_SHA" > fac-guard-android/dist/IMGUI_COMMIT.txt
 
-          cat > fac-guard-android/dist/BUILD_INFO.txt <<'EOF'
-          FAC Guard V14
+          cat > fac-guard-android/dist/BUILD_INFO.txt <<EOF
+          FAC Guard V15.2 ImGui shell
           Guard package: fac.guard
           Protected package: com.cocfz.com.freescript
-          Original APK modification: NONE
-          Root monitor interval: ~0.5 seconds
-          Boot receiver: enabled when armed
-          Root keepalive: /data/local/tmp/fac_guard_v14_keepalive.sh
-          License endpoint: https://fac.fetzi-ai.de/api/android/licenses/verify
-          License appVersion: 310.0
-          Local expiry check: 30 seconds
-          Server recheck: 5 minutes
-          Guard policy: fail closed
+          Native UI: Dear ImGui + OpenGL ES 3
+          ABIs: armeabi-v7a, arm64-v8a, x86, x86_64
+          Dear ImGui commit: $IMGUI_SHA
+          Bot settings path: /storage/emulated/0/uix/zh1.txt
+          Payload asset: injected after CI as assets/fac_runtime.bin
+          Bot schema asset: injected after CI as assets/fac/bot_config_schema.json
+          Original runtime modification: NONE
           EOF
 
-      - name: Upload FAC Guard V14
+      - name: Upload FAC Guard V15.2 shell
         uses: actions/upload-artifact@v4
         with:
-          name: FAC-Guard-v14
+          name: FAC-Guard-v15-2-shell
           path: fac-guard-android/dist/*
           if-no-files-found: error
