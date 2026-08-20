@@ -1,6 +1,7 @@
 package fac.guard;
 
 import android.content.Context;
+import android.os.SystemClock;
 import java.io.*;
 import java.nio.charset.StandardCharsets;
 
@@ -9,6 +10,7 @@ public final class RootOps {
     private static final String KEEPALIVE="/data/local/tmp/fac_guard_v15_keepalive.sh";
     private static final String KEEPALIVE_PID="/data/local/tmp/fac_guard_v15_keepalive.pid";
     private static final String INSTALL_TEMP="/data/local/tmp/fac_runtime_v15.apk";
+    private static volatile String lastInstallError="";
     private RootOps() {}
 
     public static boolean hasRoot(){
@@ -49,17 +51,58 @@ public final class RootOps {
         }catch(Exception e){return false;}
     }
 
+    /**
+     * Streams the verified plaintext APK through su stdin. Root never has to
+     * traverse /data/user/0/fac.guard, avoiding the MuMu/SELinux "denied" path
+     * seen in V15. The whole install is capped at ~40 seconds.
+     */
     public static boolean installPackage(File privateApk){
-        if(privateApk==null||!privateApk.isFile())return false;
+        lastInstallError="";
+        if(privateApk==null||!privateApk.isFile()){lastInstallError="Runtime payload file is missing.";return false;}
+        java.lang.Process p=null;
         try{
-            String src=q(privateApk.getAbsolutePath());
             String tmp=q(INSTALL_TEMP);
-            String cmd="rm -f "+tmp+"; cp "+src+" "+tmp+"; chmod 0644 "+tmp+
-                "; pm install -r "+tmp+"; RC=$?; rm -f "+tmp+"; exit $RC";
-            String result=run(cmd);
-            return result.contains("Success")||result.trim().length()==0;
-        }catch(Exception e){return false;}
+            String cmd="rm -f "+tmp+
+                "; cat > "+tmp+
+                " && chmod 0644 "+tmp+
+                " && (restorecon "+tmp+" >/dev/null 2>&1 || true)"+
+                " && pm install --user 0 -r "+tmp+
+                "; RC=$?; rm -f "+tmp+"; exit $RC";
+            ProcessBuilder pb=new ProcessBuilder("su","-c",cmd);pb.redirectErrorStream(true);p=pb.start();
+
+            try(FileInputStream in=new FileInputStream(privateApk);OutputStream rootIn=p.getOutputStream()){
+                byte[] buf=new byte[128*1024];int n;
+                while((n=in.read(buf))>0)rootIn.write(buf,0,n);
+                rootIn.flush();
+            }
+
+            long deadline=SystemClock.elapsedRealtime()+40000L;
+            while(true){
+                try{
+                    int rc=p.exitValue();
+                    String out=readBounded(p.getInputStream(),16384).trim();
+                    if(rc==0&&(out.contains("Success")||out.length()==0))return true;
+                    lastInstallError="Package Manager denied installation"+(out.length()>0?": "+out:"");
+                    return false;
+                }catch(IllegalThreadStateException stillRunning){
+                    if(SystemClock.elapsedRealtime()>=deadline){
+                        lastInstallError="Runtime installation timed out after 40 seconds.";
+                        try{p.destroy();}catch(Exception ignored){}
+                        return false;
+                    }
+                    SystemClock.sleep(100L);
+                }
+            }
+        }catch(Exception e){
+            lastInstallError=e.getMessage()==null?"Root runtime installation failed.":e.getMessage();
+            try{if(p!=null)p.destroy();}catch(Exception ignored){}
+            return false;
+        }finally{
+            removeInstallTemp();
+        }
     }
+
+    public static String lastInstallError(){return lastInstallError==null?"":lastInstallError;}
 
     public static void removeInstallTemp(){
         try{run("rm -f "+q(INSTALL_TEMP));}catch(Exception ignored){}
@@ -107,6 +150,12 @@ public final class RootOps {
     }
 
     private static String q(String s){return "'"+s.replace("'","'\\''")+"'";}
+
+    private static String readBounded(InputStream in,int limit)throws IOException{
+        ByteArrayOutputStream out=new ByteArrayOutputStream();byte[] b=new byte[1024];int n,total=0;
+        while((n=in.read(b))>0&&total<limit){int take=Math.min(n,limit-total);out.write(b,0,take);total+=take;}
+        return new String(out.toByteArray(),StandardCharsets.UTF_8);
+    }
 
     private static String run(String command)throws Exception{
         java.lang.Process p=Runtime.getRuntime().exec(new String[]{"su","-c",command});
