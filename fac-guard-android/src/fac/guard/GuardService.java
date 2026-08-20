@@ -40,6 +40,7 @@ public class GuardService extends Service {
     @Override public int onStartCommand(Intent intent,int flags,int startId){
         String action=intent==null?null:intent.getAction();
         if(ACTION_DISARM.equals(action)){
+            FloatingMenuController.notifyWarning(this,"FAC Guard","Protection was disarmed");
             LicenseStore.setArmed(this,false);
             LicenseStore.clearSession(this);
             RootOps.stopKeepalive();
@@ -93,6 +94,7 @@ public class GuardService extends Service {
         if(LicenseStore.isSessionActive(this)&&LicenseStore.isLocallyValid(this)&&PayloadManager.isExpectedRuntimeInstalled(this)){
             lastTargetRunning=true;
             updateNotification("FAC license active • original runtime protected");
+            FloatingMenuController.notifySuccess(this,"FAC Guard","Original runtime protected");
             return;
         }
         if(!interceptBusy.compareAndSet(false,true))return;
@@ -148,6 +150,9 @@ public class GuardService extends Service {
     private void enforceLock(String reason,boolean showUi){
         if(locking)return;
         locking=true;
+        // Push the ImGui error while the protected runtime/surface is still alive.
+        FloatingMenuController.notifyError(this,"FAC session locked",reason);
+        try{Thread.sleep(350L);}catch(Exception ignored){}
         LicenseStore.invalidate(this);
         LicenseStore.setLastEvent(this,reason);
         RootOps.forceStopTarget();
@@ -182,7 +187,7 @@ public class GuardService extends Service {
         if(Build.VERSION.SDK_INT>=26){
             NotificationManager nm=(NotificationManager)getSystemService(NOTIFICATION_SERVICE);
             if(nm!=null){
-                NotificationChannel ch=new NotificationChannel(CHANNEL_ID,"FAC Guard V15",NotificationManager.IMPORTANCE_LOW);
+                NotificationChannel ch=new NotificationChannel(CHANNEL_ID,"FAC Guard V15.2",NotificationManager.IMPORTANCE_LOW);
                 ch.setDescription("Root guard for the embedded original FAC runtime");
                 nm.createNotificationChannel(ch);
             }
@@ -190,12 +195,12 @@ public class GuardService extends Service {
     }
 
     private Notification notification(String text){
-        Intent open=new Intent(this,MainActivity.class);
+        Intent open=new Intent(this,MainActivityV152.class);
         int pf=PendingIntent.FLAG_UPDATE_CURRENT;
         if(Build.VERSION.SDK_INT>=23)pf|=PendingIntent.FLAG_IMMUTABLE;
         PendingIntent pi=PendingIntent.getActivity(this,15015,open,pf);
         Notification.Builder b=Build.VERSION.SDK_INT>=26?new Notification.Builder(this,CHANNEL_ID):new Notification.Builder(this);
-        b.setContentTitle("FAC Guard V15")
+        b.setContentTitle("FAC Guard V15.2")
             .setContentText(text)
             .setSmallIcon(android.R.drawable.ic_lock_lock)
             .setOngoing(true)
