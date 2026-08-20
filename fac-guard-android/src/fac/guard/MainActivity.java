@@ -12,7 +12,7 @@ import java.util.*;
 
 public class MainActivity extends Activity {
     private EditText keyInput;
-    private TextView rootStatus,guardStatus,licenseStatus,eventStatus;
+    private TextView rootStatus,guardStatus,licenseStatus,runtimeStatus,eventStatus;
     private Button verifyStart,startOriginal,lockSession,toggleGuard;
     private volatile boolean busy;
     private volatile boolean intercepted;
@@ -47,23 +47,24 @@ public class MainActivity extends Activity {
         LinearLayout root=new LinearLayout(this);root.setOrientation(LinearLayout.VERTICAL);root.setPadding(dp(24),dp(28),dp(24),dp(28));
         scroll.addView(root,new ScrollView.LayoutParams(-1,-2));
 
-        TextView title=text("FAC Guard V14",28);title.setGravity(Gravity.CENTER);root.addView(title);
-        TextView sub=text("Root guard • original APK stays untouched",13);sub.setGravity(Gravity.CENTER);sub.setTextColor(Color.LTGRAY);sub.setPadding(0,dp(4),0,dp(22));root.addView(sub);
+        TextView title=text("FAC Guard V15",28);title.setGravity(Gravity.CENTER);root.addView(title);
+        TextView sub=text("Single APK • encrypted original runtime payload",13);sub.setGravity(Gravity.CENTER);sub.setTextColor(Color.LTGRAY);sub.setPadding(0,dp(4),0,dp(22));root.addView(sub);
 
         rootStatus=text("Root: checking...",14);root.addView(rootStatus);
         guardStatus=text("Guard: checking...",14);guardStatus.setPadding(0,dp(5),0,0);root.addView(guardStatus);
+        runtimeStatus=text("Runtime: checking...",14);runtimeStatus.setPadding(0,dp(5),0,0);root.addView(runtimeStatus);
         licenseStatus=text("License: not verified",14);licenseStatus.setPadding(0,dp(5),0,dp(18));root.addView(licenseStatus);
 
         TextView label=text("FAC license key",13);label.setTextColor(Color.LTGRAY);root.addView(label);
         keyInput=new EditText(this);keyInput.setSingleLine(true);keyInput.setTextColor(Color.WHITE);keyInput.setHintTextColor(Color.GRAY);keyInput.setHint("FACWEEK-XXXX-XXXX-XXXX");keyInput.setTypeface(android.graphics.Typeface.MONOSPACE);keyInput.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);root.addView(keyInput,new LinearLayout.LayoutParams(-1,dp(56)));
 
-        verifyStart=new Button(this);verifyStart.setText("VERIFY & START ORIGINAL");verifyStart.setOnClickListener(v->verifyAndLaunch(keyInput.getText().toString().trim(),false));root.addView(verifyStart,new LinearLayout.LayoutParams(-1,dp(56)));
-        startOriginal=new Button(this);startOriginal.setText("START ORIGINAL");startOriginal.setOnClickListener(v->startApprovedOriginal());root.addView(startOriginal,new LinearLayout.LayoutParams(-1,dp(50)));
+        verifyStart=new Button(this);verifyStart.setText("VERIFY & START");verifyStart.setOnClickListener(v->verifyAndLaunch(keyInput.getText().toString().trim(),false));root.addView(verifyStart,new LinearLayout.LayoutParams(-1,dp(56)));
+        startOriginal=new Button(this);startOriginal.setText("START ORIGINAL RUNTIME");startOriginal.setOnClickListener(v->startApprovedOriginal());root.addView(startOriginal,new LinearLayout.LayoutParams(-1,dp(50)));
         lockSession=new Button(this);lockSession.setText("LOCK SESSION NOW");lockSession.setOnClickListener(v->lockNow());root.addView(lockSession,new LinearLayout.LayoutParams(-1,dp(50)));
         toggleGuard=new Button(this);toggleGuard.setOnClickListener(v->toggleGuard());root.addView(toggleGuard,new LinearLayout.LayoutParams(-1,dp(50)));
 
         eventStatus=text("",12);eventStatus.setTextColor(Color.GRAY);eventStatus.setPadding(0,dp(16),0,dp(8));root.addView(eventStatus);
-        TextView note=text("After first setup you normally launch the original Aiwan/CoC icon. FAC Guard watches com.cocfz.com.freescript through root. A direct start without an active verified FAC session is stopped, FAC verification is shown, and after success the untouched original is relaunched. Active sessions are checked locally every 30 seconds and online every 5 minutes.",12);note.setTextColor(Color.GRAY);root.addView(note);
+        TextView note=text("V15 keeps the known-good original Aiwan/CoC APK byte-identical. FAC Guard carries it as an AES-GCM encrypted binary payload. After a valid FAC verification, V15 checks payload SHA-256 + the original lrzs signing certificate and, when needed, installs those exact original APK bytes through root. The NX/Lua APK itself is never patched or re-signed.",12);note.setTextColor(Color.GRAY);root.addView(note);
         setContentView(scroll);
     }
 
@@ -87,12 +88,17 @@ public class MainActivity extends Activity {
             final boolean armed=LicenseStore.isArmed(this);
             final boolean local=LicenseStore.isLocallyValid(this);
             final boolean session=LicenseStore.isSessionActive(this);
+            final boolean runtime=PayloadManager.isExpectedRuntimeInstalled(this);
+            final boolean anyRuntime=PayloadManager.isAnyRuntimeInstalled(this);
             final String last=LicenseStore.lastEvent(this);
             runOnUiThread(()->{
                 rootStatus.setText(root?"Root: READY":"Root: REQUIRED / NOT AVAILABLE");
                 rootStatus.setTextColor(root?Color.rgb(80,220,120):Color.rgb(255,90,90));
                 guardStatus.setText(armed?"Guard: ARMED":"Guard: DISARMED");
                 guardStatus.setTextColor(armed?Color.rgb(80,220,120):Color.rgb(255,190,70));
+                if(runtime){runtimeStatus.setText("Runtime: ORIGINAL SIGNATURE VERIFIED");runtimeStatus.setTextColor(Color.rgb(80,220,120));}
+                else if(anyRuntime){runtimeStatus.setText("Runtime: WRONG / MODIFIED SIGNER");runtimeStatus.setTextColor(Color.rgb(255,90,90));}
+                else{runtimeStatus.setText("Runtime: embedded payload ready for install");runtimeStatus.setTextColor(Color.LTGRAY);}
                 if(session&&local){licenseStatus.setText("License: ACTIVE • session authorized");licenseStatus.setTextColor(Color.rgb(80,220,120));}
                 else if(local){licenseStatus.setText("License: verified • session locked");licenseStatus.setTextColor(Color.rgb(255,190,70));}
                 else{licenseStatus.setText("License: verification required");licenseStatus.setTextColor(Color.LTGRAY);}
@@ -106,7 +112,7 @@ public class MainActivity extends Activity {
 
     private void setBusy(boolean value){
         busy=value;
-        runOnUiThread(()->{verifyStart.setEnabled(!value);keyInput.setEnabled(!value);});
+        runOnUiThread(()->{verifyStart.setEnabled(!value);keyInput.setEnabled(!value);startOriginal.setEnabled(!value&&LicenseStore.isSessionActive(this)&&LicenseStore.isLocallyValid(this));});
     }
 
     private void verifyAndLaunch(final String key,final boolean automatic){
@@ -120,16 +126,19 @@ public class MainActivity extends Activity {
                 LicenseApi.Result r=LicenseApi.verify(this,key);
                 LicenseStore.saveKey(this,key);
                 if(!LicenseStore.saveVerification(this,r))throw new IllegalStateException("Could not persist verification.");
+
+                statusLicense("License valid • checking original runtime payload...",Color.LTGRAY);
+                boolean restored=PayloadManager.ensureInstalled(this);
                 LicenseStore.setSessionActive(this,true);
-                LicenseStore.setLastEvent(this,"FAC license verified; original runtime authorized.");
+                LicenseStore.setLastEvent(this,restored?"FAC verified; embedded original runtime installed and authorized.":"FAC verified; original runtime signature confirmed and authorized.");
                 statusLicense("License: ACTIVE until "+formatDate(r.expiryEpochMs)+" • "+r.devicesBound+"/"+r.devicesLimit+" devices",Color.rgb(80,220,120));
                 launchOriginalClean();
             }catch(SecurityException e){
                 LicenseStore.invalidate(this);
-                statusLicense("License refused: "+safe(e.getMessage()),Color.rgb(255,90,90));
+                statusLicense("FAC refused: "+safe(e.getMessage()),Color.rgb(255,90,90));
             }catch(Exception e){
                 LicenseStore.invalidate(this);
-                statusLicense("License verification failed or server unreachable.",Color.rgb(255,90,90));
+                statusLicense("FAC verification/payload setup failed: "+safe(e.getMessage()),Color.rgb(255,90,90));
             }finally{setBusy(false);runOnUiThread(this::refreshState);}
         },automatic?"FAC-Auto-Verify":"FAC-Verify").start();
     }
@@ -147,8 +156,9 @@ public class MainActivity extends Activity {
     }
 
     private void launchOriginalClean()throws Exception{
+        PayloadManager.ensureInstalled(this);
         Intent launch=getPackageManager().getLaunchIntentForPackage(RootOps.TARGET_PACKAGE);
-        if(launch==null)throw new IllegalStateException("Original app com.cocfz.com.freescript is not installed.");
+        if(launch==null)throw new IllegalStateException("Original runtime could not be resolved after payload verification.");
         RootOps.forceStopTarget();
         LicenseStore.setSessionActive(this,true);
         ensureGuardRunning();
@@ -157,11 +167,11 @@ public class MainActivity extends Activity {
         runOnUiThread(()->{
             try{
                 startActivity(launch);
-                LicenseStore.setLastEvent(this,"Original runtime launched under FAC Guard.");
+                LicenseStore.setLastEvent(this,"Byte-identical original runtime launched under FAC Guard V15.");
                 finish();
             }catch(Exception e){
                 LicenseStore.clearSession(this);
-                statusLicense("Could not launch original app.",Color.rgb(255,90,90));
+                statusLicense("Could not launch original runtime.",Color.rgb(255,90,90));
             }
         });
     }
