@@ -47,7 +47,7 @@ public class MainActivity extends Activity {
         LinearLayout root=new LinearLayout(this);root.setOrientation(LinearLayout.VERTICAL);root.setPadding(dp(24),dp(28),dp(24),dp(28));
         scroll.addView(root,new ScrollView.LayoutParams(-1,-2));
 
-        TextView title=text("FAC Guard V15",28);title.setGravity(Gravity.CENTER);root.addView(title);
+        TextView title=text("FAC Guard V15.2.1",28);title.setGravity(Gravity.CENTER);root.addView(title);
         TextView sub=text("Single APK • encrypted original runtime payload",13);sub.setGravity(Gravity.CENTER);sub.setTextColor(Color.LTGRAY);sub.setPadding(0,dp(4),0,dp(22));root.addView(sub);
 
         rootStatus=text("Root: checking...",14);root.addView(rootStatus);
@@ -64,7 +64,7 @@ public class MainActivity extends Activity {
         toggleGuard=new Button(this);toggleGuard.setOnClickListener(v->toggleGuard());root.addView(toggleGuard,new LinearLayout.LayoutParams(-1,dp(50)));
 
         eventStatus=text("",12);eventStatus.setTextColor(Color.GRAY);eventStatus.setPadding(0,dp(16),0,dp(8));root.addView(eventStatus);
-        TextView note=text("V15 keeps the known-good original Aiwan/CoC APK byte-identical. FAC Guard carries it as an AES-GCM encrypted binary payload. After a valid FAC verification, V15 checks payload SHA-256 + the original lrzs signing certificate and, when needed, installs those exact original APK bytes through root. The NX/Lua APK itself is never patched or re-signed.",12);note.setTextColor(Color.GRAY);root.addView(note);
+        TextView note=text("V15.2.1 keeps the known-good original Aiwan/CoC APK byte-identical. FAC verifies the encrypted payload, stages it through root with a hard timeout, installs the original signed APK, then protects it with FAC Guard. The NX/Lua APK itself is never patched or re-signed.",12);note.setTextColor(Color.GRAY);root.addView(note);
         setContentView(scroll);
     }
 
@@ -115,6 +115,12 @@ public class MainActivity extends Activity {
         runOnUiThread(()->{verifyStart.setEnabled(!value);keyInput.setEnabled(!value);startOriginal.setEnabled(!value&&LicenseStore.isSessionActive(this)&&LicenseStore.isLocallyValid(this));});
     }
 
+    private PayloadManager.ProgressCallback payloadProgress(){
+        return new PayloadManager.ProgressCallback(){
+            @Override public void onProgress(String text){statusLicense(text,Color.LTGRAY);}
+        };
+    }
+
     private void verifyAndLaunch(final String key,final boolean automatic){
         if(busy||key==null||key.length()<8)return;
         setBusy(true);statusLicense("License: verifying...",Color.LTGRAY);
@@ -127,8 +133,8 @@ public class MainActivity extends Activity {
                 LicenseStore.saveKey(this,key);
                 if(!LicenseStore.saveVerification(this,r))throw new IllegalStateException("Could not persist verification.");
 
-                statusLicense("License valid • checking original runtime payload...",Color.LTGRAY);
-                boolean restored=PayloadManager.ensureInstalled(this);
+                statusLicense("License valid • preparing original runtime...",Color.LTGRAY);
+                boolean restored=PayloadManager.ensureInstalled(this,payloadProgress());
                 LicenseStore.setSessionActive(this,true);
                 LicenseStore.setLastEvent(this,restored?"FAC verified; embedded original runtime installed and authorized.":"FAC verified; original runtime signature confirmed and authorized.");
                 statusLicense("License: ACTIVE until "+formatDate(r.expiryEpochMs)+" • "+r.devicesBound+"/"+r.devicesLimit+" devices",Color.rgb(80,220,120));
@@ -156,18 +162,19 @@ public class MainActivity extends Activity {
     }
 
     private void launchOriginalClean()throws Exception{
-        PayloadManager.ensureInstalled(this);
+        PayloadManager.ensureInstalled(this,payloadProgress());
         Intent launch=getPackageManager().getLaunchIntentForPackage(RootOps.TARGET_PACKAGE);
         if(launch==null)throw new IllegalStateException("Original runtime could not be resolved after payload verification.");
         RootOps.forceStopTarget();
         LicenseStore.setSessionActive(this,true);
         ensureGuardRunning();
+        statusLicense("Starting original runtime...",Color.LTGRAY);
         SystemClock.sleep(180L);
         launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         runOnUiThread(()->{
             try{
                 startActivity(launch);
-                LicenseStore.setLastEvent(this,"Byte-identical original runtime launched under FAC Guard V15.");
+                LicenseStore.setLastEvent(this,"Byte-identical original runtime launched under FAC Guard V15.2.1.");
                 finish();
             }catch(Exception e){
                 LicenseStore.clearSession(this);
