@@ -16,9 +16,13 @@ public final class LicenseRecheckBridge {
                 if(!LicenseStore.saveVerification(app,r))throw new IllegalStateException("Could not persist FAC verification.");
                 LicenseStore.setSessionActive(app,true);
                 LicenseStore.setLastEvent(app,"License recheck successful.");
+                FloatingMenuController.notifySuccess(app,"License verified",r.devicesBound+" / "+r.devicesLimit+" devices • session remains active");
             }catch(Exception e){
+                String reason=e.getMessage()==null?"Server verification failed":e.getMessage();
+                FloatingMenuController.notifyError(app,"License check failed",reason);
+                try{Thread.sleep(450L);}catch(Exception ignored){}
                 LicenseStore.invalidate(app);
-                LicenseStore.setLastEvent(app,"License recheck failed: "+(e.getMessage()==null?"server verification failed":e.getMessage()));
+                LicenseStore.setLastEvent(app,"License recheck failed: "+reason);
                 RootOps.forceStopTarget();
                 FloatingMenuController.hide(app);
                 RootOps.openGuardUi(app,"license_recheck_failed");
