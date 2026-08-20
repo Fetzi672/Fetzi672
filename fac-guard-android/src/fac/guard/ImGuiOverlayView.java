@@ -47,11 +47,7 @@ public final class ImGuiOverlayView extends GLSurfaceView implements GLSurfaceVi
         setFocusable(true);setFocusableInTouchMode(true);
     }
 
-    @Override public void onSurfaceCreated(GL10 gl,EGLConfig config){
-        nativeInit(density,initialStatus,initialSettings);
-        requestRender();
-    }
-
+    @Override public void onSurfaceCreated(GL10 gl,EGLConfig config){nativeInit(density,initialStatus,initialSettings);requestRender();}
     @Override public void onSurfaceChanged(GL10 gl,int width,int height){nativeResize(width,height);requestRender();}
 
     @Override public void onDrawFrame(GL10 gl){
@@ -61,37 +57,27 @@ public final class ImGuiOverlayView extends GLSurfaceView implements GLSurfaceVi
         if(wants!=keyboardShown){keyboardShown=wants;main.post(()->setKeyboardVisible(wants));}
         if(action!=0){
             if((action&ACTION_RECHECK)!=0&&listener!=null)main.post(listener::onRecheck);
-            if((action&ACTION_SAVE)!=0&&listener!=null){
-                final String dump=nativeDumpSettings();main.post(()->listener.onSave(dump));
-            }else if((action&ACTION_CLOSE)!=0&&listener!=null){main.post(listener::onClose);}
+            if((action&ACTION_SAVE)!=0&&listener!=null){final String dump=nativeDumpSettings();main.post(()->listener.onSave(dump));}
+            else if((action&ACTION_CLOSE)!=0&&listener!=null)main.post(listener::onClose);
         }
         if(nativeNeedsAnimation())scheduleRender(33L);
     }
 
     private void scheduleRender(long delay){
-        if(detached||renderScheduled)return;
-        renderScheduled=true;
+        if(detached||renderScheduled)return;renderScheduled=true;
         main.postDelayed(()->{if(!detached)requestRender();},delay);
     }
 
-    private void nativeCall(Runnable r){
-        if(detached)return;
-        queueEvent(()->{r.run();requestRender();});
-    }
+    private void nativeCall(Runnable r){if(detached)return;queueEvent(()->{r.run();requestRender();});}
 
     public void updateStatus(String status){nativeCall(()->nativeSetStatus(status==null?"":status));}
+    public void updateSettings(String settings){nativeCall(()->nativeSetSettings(settings==null?"":settings));}
     public void updateTextMask(String protocol){nativeCall(()->nativeSetTextMask(protocol==null?"":protocol));}
     public void setPanelOpen(boolean open){nativeCall(()->nativeSetPanelOpen(open));}
     public void notify(int type,String title,String content){nativeCall(()->nativeNotify(type,title==null?"":title,content==null?"":content));}
 
-    @Override public boolean onTouchEvent(android.view.MotionEvent e){
-        requestFocus();nativeTouch(e.getActionMasked(),e.getX(),e.getY());requestRender();return true;
-    }
-
-    @Override public boolean dispatchKeyEvent(KeyEvent event){
-        nativeKey(event.getKeyCode(),event.getAction(),event.getUnicodeChar());requestRender();return true;
-    }
-
+    @Override public boolean onTouchEvent(android.view.MotionEvent e){requestFocus();nativeTouch(e.getActionMasked(),e.getX(),e.getY());requestRender();return true;}
+    @Override public boolean dispatchKeyEvent(KeyEvent event){nativeKey(event.getKeyCode(),event.getAction(),event.getUnicodeChar());requestRender();return true;}
     @Override public boolean onCheckIsTextEditor(){return true;}
 
     @Override public InputConnection onCreateInputConnection(EditorInfo outAttrs){
@@ -106,8 +92,7 @@ public final class ImGuiOverlayView extends GLSurfaceView implements GLSurfaceVi
     }
 
     private void setKeyboardVisible(boolean visible){
-        if(detached)return;
-        InputMethodManager imm=(InputMethodManager)getContext().getSystemService(Context.INPUT_METHOD_SERVICE);if(imm==null)return;
+        if(detached)return;InputMethodManager imm=(InputMethodManager)getContext().getSystemService(Context.INPUT_METHOD_SERVICE);if(imm==null)return;
         if(visible){requestFocus();imm.showSoftInput(this,InputMethodManager.SHOW_IMPLICIT);}else imm.hideSoftInputFromWindow(getWindowToken(),0);
     }
 
@@ -127,6 +112,7 @@ public final class ImGuiOverlayView extends GLSurfaceView implements GLSurfaceVi
     private static native boolean nativeNeedsAnimation();
     private static native String nativeDumpSettings();
     private static native void nativeSetStatus(String status);
+    private static native void nativeSetSettings(String settings);
     private static native void nativeSetTextMask(String protocol);
     private static native void nativeSetPanelOpen(boolean open);
     private static native void nativeNotify(int type,String title,String content);
