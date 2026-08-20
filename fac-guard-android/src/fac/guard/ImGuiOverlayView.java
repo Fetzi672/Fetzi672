@@ -11,7 +11,7 @@ import android.view.inputmethod.*;
 import javax.microedition.khronos.egl.EGLConfig;
 import javax.microedition.khronos.opengles.GL10;
 
-/** GLSurfaceView host for the native Dear ImGui FAC panel. */
+/** Persistent transparent ImGui surface: text masks/toasts stay live while the heavy panel remains closed. */
 public final class ImGuiOverlayView extends GLSurfaceView implements GLSurfaceView.Renderer {
     public interface Listener {
         void onClose();
@@ -25,10 +25,11 @@ public final class ImGuiOverlayView extends GLSurfaceView implements GLSurfaceVi
     private final Listener listener;
     private final Handler main=new Handler(Looper.getMainLooper());
     private final float density;
-    private String initialStatus;
-    private String initialSettings;
+    private final String initialStatus;
+    private final String initialSettings;
     private volatile boolean keyboardShown;
     private volatile boolean detached;
+    private volatile boolean renderScheduled;
 
     static { System.loadLibrary("facui"); }
 
@@ -42,49 +43,53 @@ public final class ImGuiOverlayView extends GLSurfaceView implements GLSurfaceVi
         setZOrderOnTop(true);
         setPreserveEGLContextOnPause(true);
         setRenderer(this);
-        setRenderMode(GLSurfaceView.RENDERMODE_CONTINUOUSLY);
-        setFocusable(true);setFocusableInTouchMode(true);requestFocus();
+        setRenderMode(GLSurfaceView.RENDERMODE_WHEN_DIRTY);
+        setFocusable(true);setFocusableInTouchMode(true);
     }
 
     @Override public void onSurfaceCreated(GL10 gl,EGLConfig config){
         nativeInit(density,initialStatus,initialSettings);
+        requestRender();
     }
 
-    @Override public void onSurfaceChanged(GL10 gl,int width,int height){nativeResize(width,height);}
+    @Override public void onSurfaceChanged(GL10 gl,int width,int height){nativeResize(width,height);requestRender();}
 
     @Override public void onDrawFrame(GL10 gl){
+        renderScheduled=false;
         int action=nativeRender();
         boolean wants=nativeWantsTextInput();
-        if(wants!=keyboardShown){
-            keyboardShown=wants;
-            main.post(()->setKeyboardVisible(wants));
-        }
+        if(wants!=keyboardShown){keyboardShown=wants;main.post(()->setKeyboardVisible(wants));}
         if(action!=0){
             if((action&ACTION_RECHECK)!=0&&listener!=null)main.post(listener::onRecheck);
             if((action&ACTION_SAVE)!=0&&listener!=null){
-                final String dump=nativeDumpSettings();
-                main.post(()->listener.onSave(dump));
-            }else if((action&ACTION_CLOSE)!=0&&listener!=null){
-                main.post(listener::onClose);
-            }
+                final String dump=nativeDumpSettings();main.post(()->listener.onSave(dump));
+            }else if((action&ACTION_CLOSE)!=0&&listener!=null){main.post(listener::onClose);}
         }
+        if(nativeNeedsAnimation())scheduleRender(33L);
     }
 
-    public void updateStatus(final String status){
-        if(detached)return;
-        queueEvent(()->nativeSetStatus(status==null?"":status));
+    private void scheduleRender(long delay){
+        if(detached||renderScheduled)return;
+        renderScheduled=true;
+        main.postDelayed(()->{if(!detached)requestRender();},delay);
     }
+
+    private void nativeCall(Runnable r){
+        if(detached)return;
+        queueEvent(()->{r.run();requestRender();});
+    }
+
+    public void updateStatus(String status){nativeCall(()->nativeSetStatus(status==null?"":status));}
+    public void updateTextMask(String protocol){nativeCall(()->nativeSetTextMask(protocol==null?"":protocol));}
+    public void setPanelOpen(boolean open){nativeCall(()->nativeSetPanelOpen(open));}
+    public void notify(int type,String title,String content){nativeCall(()->nativeNotify(type,title==null?"":title,content==null?"":content));}
 
     @Override public boolean onTouchEvent(android.view.MotionEvent e){
-        requestFocus();
-        nativeTouch(e.getActionMasked(),e.getX(),e.getY());
-        return true;
+        requestFocus();nativeTouch(e.getActionMasked(),e.getX(),e.getY());requestRender();return true;
     }
 
     @Override public boolean dispatchKeyEvent(KeyEvent event){
-        int u=event.getUnicodeChar();
-        nativeKey(event.getKeyCode(),event.getAction(),u);
-        return true;
+        nativeKey(event.getKeyCode(),event.getAction(),event.getUnicodeChar());requestRender();return true;
     }
 
     @Override public boolean onCheckIsTextEditor(){return true;}
@@ -93,34 +98,21 @@ public final class ImGuiOverlayView extends GLSurfaceView implements GLSurfaceVi
         outAttrs.inputType=InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS|InputType.TYPE_TEXT_FLAG_MULTI_LINE;
         outAttrs.imeOptions=EditorInfo.IME_FLAG_NO_EXTRACT_UI|EditorInfo.IME_ACTION_NONE;
         return new BaseInputConnection(this,false){
-            @Override public boolean commitText(CharSequence text,int newCursorPosition){
-                if(text!=null)nativeAddText(text.toString());return true;
-            }
-            @Override public boolean setComposingText(CharSequence text,int newCursorPosition){
-                if(text!=null)nativeAddText(text.toString());return true;
-            }
-            @Override public boolean deleteSurroundingText(int beforeLength,int afterLength){
-                nativeKey(KeyEvent.KEYCODE_DEL,KeyEvent.ACTION_DOWN,0);
-                nativeKey(KeyEvent.KEYCODE_DEL,KeyEvent.ACTION_UP,0);
-                return true;
-            }
-            @Override public boolean sendKeyEvent(KeyEvent event){
-                nativeKey(event.getKeyCode(),event.getAction(),event.getUnicodeChar());return true;
-            }
+            @Override public boolean commitText(CharSequence text,int newCursorPosition){if(text!=null)nativeAddText(text.toString());requestRender();return true;}
+            @Override public boolean setComposingText(CharSequence text,int newCursorPosition){if(text!=null)nativeAddText(text.toString());requestRender();return true;}
+            @Override public boolean deleteSurroundingText(int beforeLength,int afterLength){nativeKey(KeyEvent.KEYCODE_DEL,KeyEvent.ACTION_DOWN,0);nativeKey(KeyEvent.KEYCODE_DEL,KeyEvent.ACTION_UP,0);requestRender();return true;}
+            @Override public boolean sendKeyEvent(KeyEvent event){nativeKey(event.getKeyCode(),event.getAction(),event.getUnicodeChar());requestRender();return true;}
         };
     }
 
     private void setKeyboardVisible(boolean visible){
         if(detached)return;
-        InputMethodManager imm=(InputMethodManager)getContext().getSystemService(Context.INPUT_METHOD_SERVICE);
-        if(imm==null)return;
-        if(visible){requestFocus();imm.showSoftInput(this,InputMethodManager.SHOW_IMPLICIT);}
-        else imm.hideSoftInputFromWindow(getWindowToken(),0);
+        InputMethodManager imm=(InputMethodManager)getContext().getSystemService(Context.INPUT_METHOD_SERVICE);if(imm==null)return;
+        if(visible){requestFocus();imm.showSoftInput(this,InputMethodManager.SHOW_IMPLICIT);}else imm.hideSoftInputFromWindow(getWindowToken(),0);
     }
 
     @Override protected void onDetachedFromWindow(){
-        detached=true;
-        setKeyboardVisible(false);
+        detached=true;setKeyboardVisible(false);main.removeCallbacksAndMessages(null);
         try{queueEvent(ImGuiOverlayView::nativeShutdown);}catch(Exception ignored){}
         super.onDetachedFromWindow();
     }
@@ -132,7 +124,11 @@ public final class ImGuiOverlayView extends GLSurfaceView implements GLSurfaceVi
     private static native void nativeKey(int keyCode,int action,int unicodeChar);
     private static native void nativeAddText(String text);
     private static native boolean nativeWantsTextInput();
+    private static native boolean nativeNeedsAnimation();
     private static native String nativeDumpSettings();
     private static native void nativeSetStatus(String status);
+    private static native void nativeSetTextMask(String protocol);
+    private static native void nativeSetPanelOpen(boolean open);
+    private static native void nativeNotify(int type,String title,String content);
     private static native void nativeShutdown();
 }
