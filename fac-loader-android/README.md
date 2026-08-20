@@ -33,3 +33,5 @@ Direct-launch hardening is intentionally not part of this first test build: when
 - Test the original first UI -> Confirm -> second dynamic UI flow.
 
 The loader itself uses a per-build test signing key generated only inside GitHub Actions. It does not reuse or alter the original APK signing key.
+
+Build: GitHub Actions `FAC Loader V12 APK Build`.
