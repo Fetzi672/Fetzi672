@@ -10,17 +10,25 @@
 #include "imgui.h"
 #include "backends/imgui_impl_opengl3.h"
 #include "misc/cpp/imgui_stdlib.h"
+#include "imgui_notify.h"
 
 struct Field {
     std::string category,label,type,key,value;
     std::vector<std::string> options;
 };
+struct Mask {
+    float l=0,t=0,r=0,b=0;
+    std::string text;
+    bool clickable=false;
+};
 
 static bool g_init=false;
+static bool g_panel_open=false;
 static int g_w=1,g_h=1;
 static float g_density=1.0f;
 static std::vector<Field> g_fields;
 static std::vector<std::string> g_categories;
+static std::vector<Mask> g_masks;
 static int g_category=0;
 static std::string g_search;
 static std::map<std::string,std::string> g_status;
@@ -57,9 +65,7 @@ static std::string b64enc(const std::string& in){
 
 static void parse_status(const std::string& p){
     g_status.clear();std::stringstream ss(p);std::string line;
-    while(std::getline(ss,line)){
-        auto x=split(line,'\t');if(x.size()>=2)g_status[x[0]]=b64dec(x[1]);
-    }
+    while(std::getline(ss,line)){auto x=split(line,'\t');if(x.size()>=2)g_status[x[0]]=b64dec(x[1]);}
 }
 static void parse_settings(const std::string& p){
     g_fields.clear();g_categories.clear();g_category=0;g_dirty=false;
@@ -70,6 +76,16 @@ static void parse_settings(const std::string& p){
         std::string opts=b64dec(x[5]);if(!opts.empty())f.options=split(opts,'\x1f');
         if(seen.insert(f.category).second)g_categories.push_back(f.category);
         g_fields.push_back(std::move(f));
+    }
+}
+static void parse_masks(const std::string& p){
+    g_masks.clear();std::stringstream ss(p);std::string line;
+    while(std::getline(ss,line)){
+        if(line.empty())continue;auto x=split(line,'\t');if(x.size()<6)continue;
+        try{
+            Mask m;m.l=std::stof(x[0]);m.t=std::stof(x[1]);m.r=std::stof(x[2]);m.b=std::stof(x[3]);m.text=b64dec(x[4]);m.clickable=x[5]=="1";
+            if(m.r>m.l&&m.b>m.t&&!m.text.empty())g_masks.push_back(std::move(m));
+        }catch(...){ }
     }
 }
 static std::string dump_settings(){
@@ -93,6 +109,24 @@ static void row(const char* label,const std::string& value,const ImVec4* color=n
 }
 static void section(const char* title){ImGui::Spacing();ImGui::TextColored(ImVec4(0.95f,0.32f,0.36f,1.f),"%s",title);ImGui::Separator();}
 
+static void draw_text_masks(){
+    if(g_masks.empty())return;
+    ImDrawList* dl=ImGui::GetBackgroundDrawList();
+    const float pad=2.0f*g_density;
+    for(const auto& m:g_masks){
+        float l=std::max(0.0f,m.l-pad),t=std::max(0.0f,m.t-pad),r=std::min((float)g_w,m.r+pad),b=std::min((float)g_h,m.b+pad);
+        if(r-l<4||b-t<4)continue;
+        ImU32 bg=m.clickable?IM_COL32(45,24,27,248):IM_COL32(18,18,22,248);
+        dl->AddRectFilled(ImVec2(l,t),ImVec2(r,b),bg,3.0f*g_density);
+        float size=13.0f*g_density;
+        ImVec2 ts=ImGui::CalcTextSize(m.text.c_str());
+        float avail=std::max(8.0f,r-l-6.0f*g_density);
+        if(ts.x>avail&&ts.x>0)size*=std::max(0.58f,avail/ts.x);
+        float y=t+std::max(1.0f,(b-t-size)*0.45f);
+        dl->AddText(ImGui::GetFont(),size,ImVec2(l+3.0f*g_density,y),IM_COL32(245,245,247,255),m.text.c_str(),nullptr,avail);
+    }
+}
+
 static void draw_overview(){
     section("LICENSE");
     std::string lic=status("license");ImVec4 lc=lic=="ACTIVE"?green():(lic.find("VERIFIED")!=std::string::npos?amber():red());
@@ -100,9 +134,9 @@ static void draw_overview(){
     if(ImGui::Button("RECHECK LICENSE",ImVec2(220*g_density,42*g_density)))g_actions|=4;
     std::string ev=status("last_event","");if(!ev.empty()){ImGui::Spacing();ImGui::TextWrapped("%s",ev.c_str());}
     section("GUARD");
-    std::string guard=status("guard"),root=status("root"),runtime=status("runtime");
-    ImVec4 gc=guard=="ARMED"?green():amber(),rc=root=="READY"?green():red(),rtc=runtime.find("VERIFIED")!=std::string::npos?green():red();
-    row("FAC Guard",guard,&gc);row("Root",root,&rc);row("Runtime",runtime,&rtc);
+    std::string guard=status("guard"),root=status("root"),runtime=status("runtime"),mask=status("text_mask");
+    ImVec4 gc=guard=="ARMED"?green():amber(),rc=root=="READY"?green():red(),rtc=runtime.find("VERIFIED")!=std::string::npos?green():red(),mc=mask=="ACTIVE"?green():amber();
+    row("FAC Guard",guard,&gc);row("Root",root,&rc);row("Runtime",runtime,&rtc);row("English text mask",mask,&mc);
     std::string se=status("settings_error","");if(!se.empty()){ImGui::Spacing();ImGui::TextColored(red(),"Bot Settings: %s",se.c_str());}
 }
 
@@ -110,17 +144,14 @@ static void draw_device(){
     section("DEVICE STATUS");
     std::string root=status("root"),runtime=status("runtime");
     ImVec4 rc=root=="READY"?green():red(),rtc=runtime.find("VERIFIED")!=std::string::npos?green():red();
-    row("Root",root,&rc);row("Runtime signer",runtime,&rtc);row("Bound devices",status("devices"));
+    row("Root",root,&rc);row("Runtime signer",runtime,&rtc);row("Bound devices",status("devices"));row("Text replacement",status("text_mask"));
     ImGui::Spacing();ImGui::TextDisabled("FAC Device ID");
     ImGui::PushTextWrapPos(ImGui::GetContentRegionAvail().x);ImGui::TextUnformatted(status("device_id").c_str());ImGui::PopTextWrapPos();
-    ImGui::Spacing();ImGui::TextDisabled("The Device ID is generated by the FAC V6 identity logic and is never read from the protected NX/Lua app.");
+    ImGui::Spacing();ImGui::TextDisabled("The original NX/Lua package remains byte-identical. FAC renders its own English overlay instead of changing original UI strings.");
 }
 
 static void draw_field(Field& f){
-    ImGui::PushID(f.key.c_str());
-    ImGui::TextWrapped("%s",f.label.c_str());
-    ImGui::SetNextItemWidth(-1);
-    bool changed=false;
+    ImGui::PushID(f.key.c_str());ImGui::TextWrapped("%s",f.label.c_str());ImGui::SetNextItemWidth(-1);bool changed=false;
     if(f.type=="BOOLEAN"){
         bool v=is_true(f.value);if(ImGui::Checkbox("##value",&v)){f.value=v?"true":"false";changed=true;}
     }else if(f.type=="SELECTOR"){
@@ -130,35 +161,25 @@ static void draw_field(Field& f){
             ImGui::EndCombo();
         }
     }else{
-        ImGuiInputTextFlags flags=ImGuiInputTextFlags_None;
-        if(f.type=="INTEGER"||f.type=="DECIMAL")flags|=ImGuiInputTextFlags_CharsDecimal;
+        ImGuiInputTextFlags flags=ImGuiInputTextFlags_None;if(f.type=="INTEGER"||f.type=="DECIMAL")flags|=ImGuiInputTextFlags_CharsDecimal;
         if(ImGui::InputText("##value",&f.value,flags))changed=true;
     }
-    if(changed)g_dirty=true;
-    ImGui::Spacing();ImGui::Separator();ImGui::PopID();
+    if(changed)g_dirty=true;ImGui::Spacing();ImGui::Separator();ImGui::PopID();
 }
 
 static void draw_settings(){
     if(g_fields.empty()){
-        ImGui::TextColored(red(),"Bot settings are unavailable.");
-        ImGui::TextWrapped("%s",status("settings_error","The config or schema could not be loaded.").c_str());
-        return;
+        ImGui::TextColored(red(),"Bot settings are unavailable.");ImGui::TextWrapped("%s",status("settings_error","The config or schema could not be loaded.").c_str());return;
     }
-    ImGui::SetNextItemWidth(-1);ImGui::InputTextWithHint("##search","Search all settings...",&g_search);
-    ImGui::Spacing();
+    ImGui::SetNextItemWidth(-1);ImGui::InputTextWithHint("##search","Search all settings...",&g_search);ImGui::Spacing();
     float left=std::min(245.0f*g_density,ImGui::GetContentRegionAvail().x*0.34f);
     ImGui::BeginChild("categories",ImVec2(left,0),true);
-    for(size_t i=0;i<g_categories.size();++i){
-        bool selected=(int)i==g_category;if(ImGui::Selectable(g_categories[i].c_str(),selected,0,ImVec2(0,36*g_density)))g_category=(int)i;
-    }
-    ImGui::EndChild();ImGui::SameLine();
-    ImGui::BeginChild("fields",ImVec2(0,0),true);
+    for(size_t i=0;i<g_categories.size();++i){bool selected=(int)i==g_category;if(ImGui::Selectable(g_categories[i].c_str(),selected,0,ImVec2(0,36*g_density)))g_category=(int)i;}
+    ImGui::EndChild();ImGui::SameLine();ImGui::BeginChild("fields",ImVec2(0,0),true);
     const std::string cat=g_categories.empty()?"":g_categories[std::max(0,std::min(g_category,(int)g_categories.size()-1))];
-    ImGui::TextColored(ImVec4(0.95f,0.32f,0.36f,1.f),"%s",cat.c_str());ImGui::Separator();
-    int shown=0;
+    ImGui::TextColored(ImVec4(0.95f,0.32f,0.36f,1.f),"%s",cat.c_str());ImGui::Separator();int shown=0;
     for(auto& f:g_fields){if(f.category!=cat||!match(f))continue;draw_field(f);++shown;}
-    if(shown==0)ImGui::TextDisabled("No matching settings in this category.");
-    ImGui::Spacing();
+    if(shown==0)ImGui::TextDisabled("No matching settings in this category.");ImGui::Spacing();
     if(g_dirty)ImGui::TextColored(amber(),"Unsaved changes");
     if(ImGui::Button("SAVE & CLOSE",ImVec2(190*g_density,44*g_density)))g_actions|=2;
     ImGui::SameLine();if(ImGui::Button("CLOSE",ImVec2(120*g_density,44*g_density)))g_actions|=1;
@@ -170,30 +191,45 @@ static void apply_style(){
     s.Colors[ImGuiCol_WindowBg]=ImVec4(0.055f,0.058f,0.070f,0.98f);s.Colors[ImGuiCol_ChildBg]=ImVec4(0.075f,0.078f,0.092f,0.96f);s.Colors[ImGuiCol_Border]=ImVec4(0.28f,0.29f,0.34f,0.65f);s.Colors[ImGuiCol_Button]=ImVec4(0.62f,0.10f,0.14f,1.f);s.Colors[ImGuiCol_ButtonHovered]=ImVec4(0.78f,0.14f,0.19f,1.f);s.Colors[ImGuiCol_ButtonActive]=ImVec4(0.48f,0.08f,0.11f,1.f);s.Colors[ImGuiCol_Header]=ImVec4(0.50f,0.09f,0.12f,0.8f);s.Colors[ImGuiCol_HeaderHovered]=ImVec4(0.72f,0.13f,0.17f,0.9f);s.Colors[ImGuiCol_CheckMark]=ImVec4(0.95f,0.25f,0.30f,1.f);s.Colors[ImGuiCol_Tab]=ImVec4(0.12f,0.12f,0.15f,1.f);s.Colors[ImGuiCol_TabHovered]=ImVec4(0.65f,0.12f,0.16f,1.f);s.Colors[ImGuiCol_TabSelected]=ImVec4(0.55f,0.10f,0.14f,1.f);
 }
 
+static void push_notice(int type,const std::string& title,const std::string& body){
+    ImGuiToastType t=ImGuiToastType_Info;
+    if(type==1)t=ImGuiToastType_Success;else if(type==2)t=ImGuiToastType_Warning;else if(type==3)t=ImGuiToastType_Error;
+    int duration=type==3?6500:(type==2?4800:3500);
+    ImGuiToast toast(t,duration);toast.set_title("%s",title.empty()?"FAC":title.c_str());toast.set_content("%s",body.c_str());ImGui::InsertNotification(toast);
+}
+
 extern "C" JNIEXPORT void JNICALL Java_fac_guard_ImGuiOverlayView_nativeInit(JNIEnv* env,jclass,jfloat density,jstring statusP,jstring settingsP){
     if(g_init){ImGui_ImplOpenGL3_Shutdown();ImGui::DestroyContext();g_init=false;}
-    g_density=std::max(1.0f,(float)density);IMGUI_CHECKVERSION();ImGui::CreateContext();ImGuiIO& io=ImGui::GetIO();io.IniFilename=nullptr;io.LogFilename=nullptr;io.FontGlobalScale=std::max(1.0f,g_density*0.82f);apply_style();ImGui_ImplOpenGL3_Init("#version 300 es");parse_status(jstr(env,statusP));parse_settings(jstr(env,settingsP));g_init=true;
+    g_density=std::max(1.0f,(float)density);IMGUI_CHECKVERSION();ImGui::CreateContext();ImGuiIO& io=ImGui::GetIO();io.IniFilename=nullptr;io.LogFilename=nullptr;io.Fonts->AddFontDefault();ImGui::MergeIconsWithLatestFont(13.0f,false);io.FontGlobalScale=std::max(1.0f,g_density*0.82f);apply_style();ImGui_ImplOpenGL3_Init("#version 300 es");parse_status(jstr(env,statusP));parse_settings(jstr(env,settingsP));g_panel_open=false;g_init=true;
 }
 extern "C" JNIEXPORT void JNICALL Java_fac_guard_ImGuiOverlayView_nativeResize(JNIEnv*,jclass,jint w,jint h){g_w=std::max(1,(int)w);g_h=std::max(1,(int)h);if(g_init)ImGui::GetIO().DisplaySize=ImVec2((float)g_w,(float)g_h);}
 extern "C" JNIEXPORT jint JNICALL Java_fac_guard_ImGuiOverlayView_nativeRender(JNIEnv*,jclass){
-    if(!g_init)return 0;glViewport(0,0,g_w,g_h);glClearColor(0,0,0,0);glClear(GL_COLOR_BUFFER_BIT);ImGui_ImplOpenGL3_NewFrame();ImGuiIO& io=ImGui::GetIO();io.DisplaySize=ImVec2((float)g_w,(float)g_h);io.DeltaTime=1.0f/60.0f;ImGui::NewFrame();
-    ImGui::SetNextWindowPos(ImVec2(g_w*0.045f,g_h*0.055f),ImGuiCond_Always);ImGui::SetNextWindowSize(ImVec2(g_w*0.91f,g_h*0.86f),ImGuiCond_Always);ImGui::SetNextWindowBgAlpha(0.98f);
-    ImGuiWindowFlags wf=ImGuiWindowFlags_NoCollapse|ImGuiWindowFlags_NoResize|ImGuiWindowFlags_NoMove|ImGuiWindowFlags_NoSavedSettings;
-    ImGui::Begin("FAC Guard V15.2",nullptr,wf);
-    ImGui::TextColored(ImVec4(0.96f,0.30f,0.34f,1.f),"FAC Guard V15.2");ImGui::SameLine();ImGui::TextDisabled("Dear ImGui Control Panel");
-    if(ImGui::BeginTabBar("mainTabs",ImGuiTabBarFlags_None)){
-        if(ImGui::BeginTabItem("Overview")){draw_overview();ImGui::EndTabItem();}
-        if(ImGui::BeginTabItem("Device")){draw_device();ImGui::EndTabItem();}
-        if(ImGui::BeginTabItem("Bot Settings")){draw_settings();ImGui::EndTabItem();}
-        ImGui::EndTabBar();
+    if(!g_init)return 0;glViewport(0,0,g_w,g_h);glClearColor(0,0,0,0);glClear(GL_COLOR_BUFFER_BIT);ImGui_ImplOpenGL3_NewFrame();ImGuiIO& io=ImGui::GetIO();io.DisplaySize=ImVec2((float)g_w,(float)g_h);io.DeltaTime=1.0f/30.0f;ImGui::NewFrame();
+    draw_text_masks();
+    if(g_panel_open){
+        ImGui::SetNextWindowPos(ImVec2(g_w*0.045f,g_h*0.055f),ImGuiCond_Always);ImGui::SetNextWindowSize(ImVec2(g_w*0.91f,g_h*0.86f),ImGuiCond_Always);ImGui::SetNextWindowBgAlpha(0.98f);
+        ImGuiWindowFlags wf=ImGuiWindowFlags_NoCollapse|ImGuiWindowFlags_NoResize|ImGuiWindowFlags_NoMove|ImGuiWindowFlags_NoSavedSettings;
+        ImGui::Begin("FAC Guard V15.2",nullptr,wf);ImGui::TextColored(ImVec4(0.96f,0.30f,0.34f,1.f),"FAC Guard V15.2");ImGui::SameLine();ImGui::TextDisabled("Dear ImGui Control Panel");
+        if(ImGui::BeginTabBar("mainTabs",ImGuiTabBarFlags_None)){
+            if(ImGui::BeginTabItem("Overview")){draw_overview();ImGui::EndTabItem();}
+            if(ImGui::BeginTabItem("Device")){draw_device();ImGui::EndTabItem();}
+            if(ImGui::BeginTabItem("Bot Settings")){draw_settings();ImGui::EndTabItem();}
+            ImGui::EndTabBar();
+        }
+        ImGui::End();
     }
-    ImGui::End();ImGui::Render();ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());int a=g_actions;g_actions=0;return a;
+    ImGui::RenderNotifications();ImGui::Render();ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());int a=g_actions;g_actions=0;return a;
 }
-extern "C" JNIEXPORT void JNICALL Java_fac_guard_ImGuiOverlayView_nativeTouch(JNIEnv*,jclass,jint action,jfloat x,jfloat y){if(!g_init)return;ImGuiIO& io=ImGui::GetIO();io.AddMousePosEvent(x,y);if(action==0)io.AddMouseButtonEvent(0,true);else if(action==1||action==3)io.AddMouseButtonEvent(0,false);}
+extern "C" JNIEXPORT void JNICALL Java_fac_guard_ImGuiOverlayView_nativeTouch(JNIEnv*,jclass,jint action,jfloat x,jfloat y){if(!g_init||!g_panel_open)return;ImGuiIO& io=ImGui::GetIO();io.AddMousePosEvent(x,y);if(action==0)io.AddMouseButtonEvent(0,true);else if(action==1||action==3)io.AddMouseButtonEvent(0,false);}
 static ImGuiKey keymap(int k){switch(k){case 67:return ImGuiKey_Backspace;case 66:return ImGuiKey_Enter;case 61:return ImGuiKey_Tab;case 19:return ImGuiKey_UpArrow;case 20:return ImGuiKey_DownArrow;case 21:return ImGuiKey_LeftArrow;case 22:return ImGuiKey_RightArrow;case 111:case 4:return ImGuiKey_Escape;default:return ImGuiKey_None;}}
-extern "C" JNIEXPORT void JNICALL Java_fac_guard_ImGuiOverlayView_nativeKey(JNIEnv*,jclass,jint key,jint action,jint unicodeChar){if(!g_init)return;ImGuiIO& io=ImGui::GetIO();ImGuiKey ik=keymap(key);if(ik!=ImGuiKey_None)io.AddKeyEvent(ik,action==0);if(action==0&&unicodeChar>31)io.AddInputCharacter((unsigned int)unicodeChar);}
-extern "C" JNIEXPORT void JNICALL Java_fac_guard_ImGuiOverlayView_nativeAddText(JNIEnv* env,jclass,jstring text){if(!g_init)return;std::string s=jstr(env,text);ImGui::GetIO().AddInputCharactersUTF8(s.c_str());}
-extern "C" JNIEXPORT jboolean JNICALL Java_fac_guard_ImGuiOverlayView_nativeWantsTextInput(JNIEnv*,jclass){return g_init&&ImGui::GetIO().WantTextInput?JNI_TRUE:JNI_FALSE;}
+extern "C" JNIEXPORT void JNICALL Java_fac_guard_ImGuiOverlayView_nativeKey(JNIEnv*,jclass,jint key,jint action,jint unicodeChar){if(!g_init||!g_panel_open)return;ImGuiIO& io=ImGui::GetIO();ImGuiKey ik=keymap(key);if(ik!=ImGuiKey_None)io.AddKeyEvent(ik,action==0);if(action==0&&unicodeChar>31)io.AddInputCharacter((unsigned int)unicodeChar);}
+extern "C" JNIEXPORT void JNICALL Java_fac_guard_ImGuiOverlayView_nativeAddText(JNIEnv* env,jclass,jstring text){if(!g_init||!g_panel_open)return;std::string s=jstr(env,text);ImGui::GetIO().AddInputCharactersUTF8(s.c_str());}
+extern "C" JNIEXPORT jboolean JNICALL Java_fac_guard_ImGuiOverlayView_nativeWantsTextInput(JNIEnv*,jclass){return g_init&&g_panel_open&&ImGui::GetIO().WantTextInput?JNI_TRUE:JNI_FALSE;}
+extern "C" JNIEXPORT jboolean JNICALL Java_fac_guard_ImGuiOverlayView_nativeNeedsAnimation(JNIEnv*,jclass){return g_init&&(g_panel_open||!ImGui::notifications.empty())?JNI_TRUE:JNI_FALSE;}
 extern "C" JNIEXPORT jstring JNICALL Java_fac_guard_ImGuiOverlayView_nativeDumpSettings(JNIEnv* env,jclass){std::string s=dump_settings();return env->NewStringUTF(s.c_str());}
 extern "C" JNIEXPORT void JNICALL Java_fac_guard_ImGuiOverlayView_nativeSetStatus(JNIEnv* env,jclass,jstring p){if(g_init)parse_status(jstr(env,p));}
-extern "C" JNIEXPORT void JNICALL Java_fac_guard_ImGuiOverlayView_nativeShutdown(JNIEnv*,jclass){if(g_init){ImGui_ImplOpenGL3_Shutdown();ImGui::DestroyContext();g_init=false;}g_fields.clear();g_categories.clear();g_status.clear();}
+extern "C" JNIEXPORT void JNICALL Java_fac_guard_ImGuiOverlayView_nativeSetSettings(JNIEnv* env,jclass,jstring p){if(g_init)parse_settings(jstr(env,p));}
+extern "C" JNIEXPORT void JNICALL Java_fac_guard_ImGuiOverlayView_nativeSetTextMask(JNIEnv* env,jclass,jstring p){if(g_init)parse_masks(jstr(env,p));}
+extern "C" JNIEXPORT void JNICALL Java_fac_guard_ImGuiOverlayView_nativeSetPanelOpen(JNIEnv*,jclass,jboolean open){if(g_init)g_panel_open=(open==JNI_TRUE);}
+extern "C" JNIEXPORT void JNICALL Java_fac_guard_ImGuiOverlayView_nativeNotify(JNIEnv* env,jclass,jint type,jstring title,jstring body){if(g_init)push_notice((int)type,jstr(env,title),jstr(env,body));}
+extern "C" JNIEXPORT void JNICALL Java_fac_guard_ImGuiOverlayView_nativeShutdown(JNIEnv*,jclass){if(g_init){ImGui::notifications.clear();ImGui_ImplOpenGL3_Shutdown();ImGui::DestroyContext();g_init=false;}g_panel_open=false;g_fields.clear();g_categories.clear();g_masks.clear();g_status.clear();}
