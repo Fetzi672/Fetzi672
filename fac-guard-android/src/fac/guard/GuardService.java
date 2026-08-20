@@ -20,7 +20,7 @@ public class GuardService extends Service {
     private volatile boolean locking;
     private volatile boolean lastTargetRunning;
     private volatile Thread monitorThread;
-    private volatile Process monitorProcess;
+    private volatile java.lang.Process monitorProcess;
     private long lastServerCheckElapsed;
 
     @Override public void onCreate(){
@@ -67,7 +67,7 @@ public class GuardService extends Service {
                         continue;
                     }
                     try{
-                        Process p=RootOps.startTargetMonitor();
+                        java.lang.Process p=RootOps.startTargetMonitor();
                         monitorProcess=p;
                         BufferedReader br=new BufferedReader(new InputStreamReader(p.getInputStream()));
                         String line;
@@ -170,7 +170,7 @@ public class GuardService extends Service {
 
     @Override public void onDestroy(){
         handler.removeCallbacksAndMessages(null);
-        Process p=monitorProcess;if(p!=null)try{p.destroy();}catch(Exception ignored){}
+        java.lang.Process p=monitorProcess;if(p!=null)try{p.destroy();}catch(Exception ignored){}
         Thread t=monitorThread;if(t!=null)try{t.interrupt();}catch(Exception ignored){}
         if(LicenseStore.isArmed(this)&&LicenseStore.isSessionActive(this))RootOps.forceStopTarget();
         super.onDestroy();
