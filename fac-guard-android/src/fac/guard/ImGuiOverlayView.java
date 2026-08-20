@@ -37,6 +37,8 @@ public final class ImGuiOverlayView extends GLSurfaceView implements GLSurfaceVi
     private volatile boolean keyboardShown;
     private volatile boolean detached;
     private volatile boolean renderScheduled;
+    private volatile boolean nativeReady;
+    private volatile float pendingWidth=.78f,pendingHeight=.78f,pendingScale=1.0f;
 
     static { System.loadLibrary("facui"); }
 
@@ -54,7 +56,11 @@ public final class ImGuiOverlayView extends GLSurfaceView implements GLSurfaceVi
         setFocusable(true);setFocusableInTouchMode(true);
     }
 
-    @Override public void onSurfaceCreated(GL10 gl,EGLConfig config){nativeInit(density,initialStatus,initialSettings);requestRender();}
+    @Override public void onSurfaceCreated(GL10 gl,EGLConfig config){
+        nativeInit(density,initialStatus,initialSettings);
+        nativeSetUiLayout(pendingWidth,pendingHeight,pendingScale);
+        nativeReady=true;requestRender();
+    }
     @Override public void onSurfaceChanged(GL10 gl,int width,int height){nativeResize(width,height);requestRender();}
 
     @Override public void onDrawFrame(GL10 gl){
@@ -89,29 +95,32 @@ public final class ImGuiOverlayView extends GLSurfaceView implements GLSurfaceVi
         main.postDelayed(()->{if(!detached)requestRender();},delay);
     }
 
-    private void nativeCall(Runnable r){if(detached)return;queueEvent(()->{r.run();requestRender();});}
+    private void nativeCall(Runnable r){if(detached||!nativeReady)return;queueEvent(()->{r.run();requestRender();});}
 
     public void updateStatus(String status){nativeCall(()->nativeSetStatus(status==null?"":status));}
     public void updateSettings(String settings){nativeCall(()->nativeSetSettings(settings==null?"":settings));}
     public void updateTextMask(String protocol){nativeCall(()->nativeSetTextMask(protocol==null?"":protocol));}
     public void setPanelOpen(boolean open){nativeCall(()->nativeSetPanelOpen(open));}
-    public void setUiLayout(float widthFraction,float heightFraction,float scale){nativeCall(()->nativeSetUiLayout(widthFraction,heightFraction,scale));}
+    public void setUiLayout(float widthFraction,float heightFraction,float scale){
+        pendingWidth=widthFraction;pendingHeight=heightFraction;pendingScale=scale;
+        nativeCall(()->nativeSetUiLayout(pendingWidth,pendingHeight,pendingScale));
+    }
     public void notify(int type,String title,String content){nativeCall(()->nativeNotify(type,title==null?"":title,content==null?"":content));}
 
     @Override public boolean onTouchEvent(android.view.MotionEvent e){
-        requestFocus();nativeTouch(e.getActionMasked(),e.getX(),e.getY());requestRender();return true;
+        requestFocus();if(nativeReady)nativeTouch(e.getActionMasked(),e.getX(),e.getY());requestRender();return true;
     }
-    @Override public boolean dispatchKeyEvent(KeyEvent event){nativeKey(event.getKeyCode(),event.getAction(),event.getUnicodeChar());requestRender();return true;}
+    @Override public boolean dispatchKeyEvent(KeyEvent event){if(nativeReady)nativeKey(event.getKeyCode(),event.getAction(),event.getUnicodeChar());requestRender();return true;}
     @Override public boolean onCheckIsTextEditor(){return true;}
 
     @Override public InputConnection onCreateInputConnection(EditorInfo outAttrs){
         outAttrs.inputType=InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS|InputType.TYPE_TEXT_FLAG_MULTI_LINE;
         outAttrs.imeOptions=EditorInfo.IME_FLAG_NO_EXTRACT_UI|EditorInfo.IME_ACTION_NONE;
         return new BaseInputConnection(this,false){
-            @Override public boolean commitText(CharSequence text,int newCursorPosition){if(text!=null)nativeAddText(text.toString());requestRender();return true;}
-            @Override public boolean setComposingText(CharSequence text,int newCursorPosition){if(text!=null)nativeAddText(text.toString());requestRender();return true;}
-            @Override public boolean deleteSurroundingText(int beforeLength,int afterLength){nativeKey(KeyEvent.KEYCODE_DEL,KeyEvent.ACTION_DOWN,0);nativeKey(KeyEvent.KEYCODE_DEL,KeyEvent.ACTION_UP,0);requestRender();return true;}
-            @Override public boolean sendKeyEvent(KeyEvent event){nativeKey(event.getKeyCode(),event.getAction(),event.getUnicodeChar());requestRender();return true;}
+            @Override public boolean commitText(CharSequence text,int newCursorPosition){if(text!=null&&nativeReady)nativeAddText(text.toString());requestRender();return true;}
+            @Override public boolean setComposingText(CharSequence text,int newCursorPosition){if(text!=null&&nativeReady)nativeAddText(text.toString());requestRender();return true;}
+            @Override public boolean deleteSurroundingText(int beforeLength,int afterLength){if(nativeReady){nativeKey(KeyEvent.KEYCODE_DEL,KeyEvent.ACTION_DOWN,0);nativeKey(KeyEvent.KEYCODE_DEL,KeyEvent.ACTION_UP,0);}requestRender();return true;}
+            @Override public boolean sendKeyEvent(KeyEvent event){if(nativeReady)nativeKey(event.getKeyCode(),event.getAction(),event.getUnicodeChar());requestRender();return true;}
         };
     }
 
@@ -122,7 +131,7 @@ public final class ImGuiOverlayView extends GLSurfaceView implements GLSurfaceVi
 
     @Override protected void onDetachedFromWindow(){
         detached=true;setKeyboardVisible(false);main.removeCallbacksAndMessages(null);
-        try{queueEvent(ImGuiOverlayView::nativeShutdown);}catch(Exception ignored){}
+        if(nativeReady){try{queueEvent(()->{nativeShutdown();nativeReady=false;});}catch(Exception ignored){nativeReady=false;}}
         super.onDetachedFromWindow();
     }
 
