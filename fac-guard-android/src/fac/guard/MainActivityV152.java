@@ -5,7 +5,7 @@ import android.app.AlertDialog;
 import android.content.pm.PackageManager;
 import android.os.Build;
 
-/** V15.2 launcher wrapper: keeps V15 licensing/payload flow and adds overlay setup. */
+/** V15.2 launcher wrapper: keeps V15 licensing/payload flow and adds ImGui/text-mask setup. */
 public class MainActivityV152 extends MainActivity {
     private boolean overlayPrompted;
 
@@ -13,7 +13,14 @@ public class MainActivityV152 extends MainActivity {
         super.onCreate(b);
         FloatingAutoMonitor.start(this);
         ensureStorageAccess();
-        maybeAskOverlay();
+        new Thread(()->{
+            boolean root=RootOps.hasRoot();
+            boolean granted=root&&RootOps.enableUiPrivileges(this);
+            runOnUiThread(()->{
+                if(!FloatingMenuController.canOverlay(this))maybeAskOverlay();
+                if(granted)FloatingMenuController.notifyInfo(this,"FAC UI","Floating menu and English text mask enabled");
+            });
+        },"FAC-V15.2-UI-Setup").start();
     }
 
     @Override protected void onResume(){
@@ -28,7 +35,7 @@ public class MainActivityV152 extends MainActivity {
         overlayPrompted=true;
         new AlertDialog.Builder(this)
             .setTitle("FAC Floating Menu")
-            .setMessage("Allow 'Display over other apps' so FAC can show the small floating bubble and Dear ImGui control panel above the original runtime.")
+            .setMessage("Allow 'Display over other apps' so FAC can show its floating Dear ImGui controls and English text replacement above the original runtime.")
             .setPositiveButton("ALLOW",(d,w)->FloatingMenuController.requestPermission(this))
             .setNegativeButton("LATER",null)
             .show();
