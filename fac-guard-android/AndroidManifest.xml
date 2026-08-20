@@ -14,27 +14,23 @@
 
     <application
         android:allowBackup="false"
-        android:label="FAC Guard V15.2"
+        android:label="FAC Guard V15.2.1"
         android:usesCleartextTraffic="false"
         android:theme="@android:style/Theme.Material.NoActionBar">
 
-        <!-- Real V15.2 activity. It intentionally has no launcher intent. -->
         <activity
             android:name="fac.guard.MainActivityV152"
             android:exported="true"
             android:launchMode="singleTask" />
 
-        <!-- Compatibility component for existing internal/root intents that still
-             address fac.guard.MainActivity. It resolves to the V15.2 UI. -->
         <activity-alias
             android:name="fac.guard.MainActivity"
             android:targetActivity="fac.guard.MainActivityV152"
             android:enabled="true"
             android:exported="true" />
 
-        <!-- This is the only launcher-visible component. V15.2 disables this
-             alias after successful FAC authorization/runtime setup, leaving the
-             Guard installed but absent from the Android launcher. -->
+        <!-- Setup-only launcher entry. It is disabled after the first successful
+             FAC authorization/runtime setup while the Guard itself stays active. -->
         <activity-alias
             android:name="fac.guard.LauncherAlias"
             android:targetActivity="fac.guard.MainActivityV152"
