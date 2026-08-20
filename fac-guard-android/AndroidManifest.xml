@@ -33,6 +33,18 @@
             android:exported="false"
             android:stopWithTask="false" />
 
+        <service
+            android:name="fac.guard.TextMaskAccessibilityService"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/fac_text_mask_service" />
+        </service>
+
         <receiver
             android:name="fac.guard.BootReceiver"
             android:enabled="true"
