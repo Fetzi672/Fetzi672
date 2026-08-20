@@ -14,8 +14,8 @@ import javax.crypto.SecretKey;
 import javax.crypto.spec.GCMParameterSpec;
 
 public final class LicenseStore {
-    private static final String PREF="fac_guard_v14";
-    private static final String KEY_ALIAS="fac_guard_license_key_v14";
+    private static final String PREF="fac_guard_v15";
+    private static final String KEY_ALIAS="fac_guard_license_key_v15";
     private LicenseStore() {}
 
     private static SharedPreferences p(Context c){return c.getSharedPreferences(PREF,0);}
