@@ -32,7 +32,7 @@ jobs:
           APKSIGNER="$BUILD_TOOLS/apksigner"
 
           rm -rf fac-guard-android/out fac-guard-android/dist
-          mkdir -p fac-guard-android/out/classes fac-guard-android/out/dex fac-guard-android/out/apk-root/lib fac-guard-android/dist
+          mkdir -p fac-guard-android/out/classes fac-guard-android/out/dex fac-guard-android/out/apk-root/lib fac-guard-android/out/compiled-res fac-guard-android/dist
 
           javac -source 8 -target 8 -encoding UTF-8 \
             -cp "$ANDROID_JAR" \
@@ -45,8 +45,11 @@ jobs:
           test -s fac-guard-android/out/dex/classes.dex
 
           git clone --depth 1 https://github.com/ocornut/imgui.git fac-guard-android/out/imgui-src
+          git clone --depth 1 https://github.com/patrickcjk/imgui-notify.git fac-guard-android/out/imgui-notify-src
           IMGUI_SHA=$(git -C fac-guard-android/out/imgui-src rev-parse HEAD)
+          NOTIFY_SHA=$(git -C fac-guard-android/out/imgui-notify-src rev-parse HEAD)
           echo "Dear ImGui commit: $IMGUI_SHA"
+          echo "imgui-notify commit: $NOTIFY_SHA"
 
           for ABI in armeabi-v7a arm64-v8a x86 x86_64; do
             B="fac-guard-android/out/native-$ABI"
@@ -55,11 +58,15 @@ jobs:
               -DANDROID_ABI="$ABI" \
               -DANDROID_PLATFORM=android-23 \
               -DCMAKE_BUILD_TYPE=Release \
-              -DIMGUI_DIR="$GITHUB_WORKSPACE/fac-guard-android/out/imgui-src"
+              -DIMGUI_DIR="$GITHUB_WORKSPACE/fac-guard-android/out/imgui-src" \
+              -DIMGUI_NOTIFY_DIR="$GITHUB_WORKSPACE/fac-guard-android/out/imgui-notify-src"
             cmake --build "$B" --config Release
             mkdir -p "fac-guard-android/out/apk-root/lib/$ABI"
             cp "$B/libfacui.so" "fac-guard-android/out/apk-root/lib/$ABI/libfacui.so"
           done
+
+          "$AAPT2" compile --dir fac-guard-android/res -o fac-guard-android/out/compiled-res
+          mapfile -t RES_FILES < <(find fac-guard-android/out/compiled-res -type f -name '*.flat' -print | sort)
 
           "$AAPT2" link \
             -I "$ANDROID_JAR" \
@@ -68,6 +75,7 @@ jobs:
             --target-sdk-version 28 \
             --version-code 152 \
             --version-name 15.2 \
+            "${RES_FILES[@]}" \
             -o fac-guard-android/out/base.apk
 
           cp fac-guard-android/out/base.apk fac-guard-android/out/unaligned.apk
@@ -89,20 +97,26 @@ jobs:
             fac-guard-android/out/aligned.apk
 
           "$APKSIGNER" verify --verbose --print-certs fac-guard-android/dist/FAC_Guard_v15_2_shell.apk
-          "$AAPT2" dump badging fac-guard-android/dist/FAC_Guard_v15_2_shell.apk | head -20
+          "$AAPT2" dump badging fac-guard-android/dist/FAC_Guard_v15_2_shell.apk | head -25
           sha256sum fac-guard-android/dist/FAC_Guard_v15_2_shell.apk | tee fac-guard-android/dist/FAC_Guard_v15_2_shell.sha256
           printf '%s\n' "$IMGUI_SHA" > fac-guard-android/dist/IMGUI_COMMIT.txt
+          printf '%s\n' "$NOTIFY_SHA" > fac-guard-android/dist/IMGUI_NOTIFY_COMMIT.txt
+          cp fac-guard-android/out/imgui-notify-src/LICENSE fac-guard-android/dist/IMGUI_NOTIFY_LICENSE.txt
 
           cat > fac-guard-android/dist/BUILD_INFO.txt <<EOF
           FAC Guard V15.2 ImGui shell
           Guard package: fac.guard
           Protected package: com.cocfz.com.freescript
-          Native UI: Dear ImGui + OpenGL ES 3
+          Native UI: Dear ImGui + OpenGL ES 3 + imgui-notify
           ABIs: armeabi-v7a, arm64-v8a, x86, x86_64
           Dear ImGui commit: $IMGUI_SHA
+          imgui-notify commit: $NOTIFY_SHA
           Bot settings path: /storage/emulated/0/uix/zh1.txt
+          Accessibility English mask: packaged
+          Launcher visibility: setup-only alias, auto-hidden after successful authorization
           Payload asset: injected after CI as assets/fac_runtime.bin
           Bot schema asset: injected after CI as assets/fac/bot_config_schema.json
+          Translation map asset: injected after CI as assets/fac/text_map.tsv
           Original runtime modification: NONE
           EOF
 
