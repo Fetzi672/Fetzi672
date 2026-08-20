@@ -1,23 +1,34 @@
 package fac.guard;
 
 import android.content.*;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.Color;
 import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.os.*;
 import android.provider.Settings;
+import android.util.Base64;
+import android.util.DisplayMetrics;
 import android.view.*;
 import android.widget.*;
-import android.util.Base64;
+import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
 
-/** One persistent transparent ImGui surface + a tiny draggable FAC bubble. */
+/**
+ * V15.2.2 overlay controller.
+ *
+ * Closed state: one fullscreen NOT_TOUCHABLE surface renders masks/toasts.
+ * Open state: the same surface is physically resized to the visible ImGui panel
+ * and marked NOT_TOUCH_MODAL, so every touch outside the panel reaches the
+ * original runtime instead of being swallowed by a transparent fullscreen view.
+ */
 public final class FloatingMenuController {
     public static final int NOTICE_SUCCESS=1,NOTICE_WARNING=2,NOTICE_ERROR=3,NOTICE_INFO=4;
     private static Context app;
     private static WindowManager wm;
-    private static TextView bubble;
+    private static View bubble;
     private static ImGuiOverlayView surface;
     private static WindowManager.LayoutParams surfaceLp;
     private static boolean panelOpen;
@@ -50,10 +61,7 @@ public final class FloatingMenuController {
         main.post(()->{
             ensureSurface();
             if(panelOpen||bubble!=null||wm==null)return;
-            final TextView b=new TextView(app);
-            b.setText("FAC");b.setTextColor(Color.WHITE);b.setTextSize(12);b.setGravity(Gravity.CENTER);
-            GradientDrawable bg=new GradientDrawable();bg.setShape(GradientDrawable.OVAL);bg.setColor(Color.rgb(190,32,43));bg.setStroke(dp(2),Color.argb(220,255,255,255));
-            b.setBackground(bg);b.setElevation(dp(8));
+            final View b=createBubbleView();
             final WindowManager.LayoutParams lp=bubbleParams();
             final float[] down=new float[4];final long[] when=new long[1];
             b.setOnTouchListener((v,e)->{
@@ -71,6 +79,21 @@ public final class FloatingMenuController {
             });
             try{wm.addView(b,lp);bubble=b;}catch(Exception ignored){bubble=null;}
         });
+    }
+
+    private static View createBubbleView(){
+        ImageView b=new ImageView(app);
+        b.setContentDescription("FAC Guard");
+        b.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        b.setPadding(dp(3),dp(3),dp(3),dp(3));
+        GradientDrawable bg=new GradientDrawable();
+        bg.setShape(GradientDrawable.OVAL);bg.setColor(Color.rgb(190,32,43));bg.setStroke(dp(2),Color.argb(235,255,255,255));
+        b.setBackground(bg);b.setElevation(dp(8));
+        if(Build.VERSION.SDK_INT>=21){b.setOutlineProvider(ViewOutlineProvider.BACKGROUND);b.setClipToOutline(true);}
+        try(InputStream in=app.getAssets().open("fac/fac_bubble.jpg")){
+            Bitmap bm=BitmapFactory.decodeStream(in);if(bm!=null)b.setImageBitmap(bm);
+        }catch(Exception ignored){b.setImageResource(android.R.drawable.ic_lock_lock);}
+        return b;
     }
 
     /** Remove every FAC overlay when the protected runtime/session is gone. */
@@ -121,7 +144,12 @@ public final class FloatingMenuController {
             @Override public void onRecheck(){
                 LicenseStore.setLastEvent(app,"License recheck in progress...");notifyInfo(app,"License","Checking FAC license...");LicenseRecheckBridge.recheck(app);
             }
+            @Override public void onLayout(float widthFraction,float heightFraction,float uiScale){
+                UiPreferences.save(app,widthFraction,heightFraction,uiScale);
+                if(surface!=null){surface.setUiLayout(UiPreferences.width(app),UiPreferences.height(app),UiPreferences.scale(app));applyPanelLayout();}
+            }
         });
+        v.setUiLayout(UiPreferences.width(app),UiPreferences.height(app),UiPreferences.scale(app));
         surfaceLp=surfaceParams(false);
         try{
             wm.addView(v,surfaceLp);surface=v;surface.updateTextMask(latestMask);
@@ -133,19 +161,44 @@ public final class FloatingMenuController {
         if(app==null||!canOverlay(app))return;ensureSurface();if(surface==null)return;
         if(bubble!=null){try{wm.removeView(bubble);}catch(Exception ignored){}bubble=null;}
         panelOpen=true;
-        surface.updateSettings(BotSettingsBridge.loadProtocol(app));surface.updateStatus(buildStatus(app));surface.setPanelOpen(true);
-        surfaceLp.flags=WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN|WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS;
+        surface.updateSettings(BotSettingsBridge.loadProtocol(app));surface.updateStatus(buildStatus(app));
+        surface.setUiLayout(UiPreferences.width(app),UiPreferences.height(app),UiPreferences.scale(app));
+        applyPanelLayout();
+        surface.setPanelOpen(true);
+        surface.requestFocus();main.removeCallbacks(statusRefresh);main.post(statusRefresh);
+    }
+
+    private static void applyPanelLayout(){
+        if(!panelOpen||surface==null||surfaceLp==null||wm==null||app==null)return;
+        DisplayMetrics dm=new DisplayMetrics();
+        try{wm.getDefaultDisplay().getRealMetrics(dm);}catch(Exception e){dm=app.getResources().getDisplayMetrics();}
+        int sw=Math.max(1,dm.widthPixels),sh=Math.max(1,dm.heightPixels);
+        int pw=Math.max(dp(320),(int)(sw*UiPreferences.width(app)));
+        int ph=Math.max(dp(360),(int)(sh*UiPreferences.height(app)));
+        pw=Math.min(sw,pw);ph=Math.min(sh,ph);
+        surfaceLp.width=pw;surfaceLp.height=ph;
+        surfaceLp.x=(sw-pw)/2;surfaceLp.y=(sh-ph)/2;
+        surfaceLp.gravity=Gravity.TOP|Gravity.START;
+        surfaceLp.flags=WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
+            |WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
+            |WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS;
         surfaceLp.softInputMode=WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE;
         try{wm.updateViewLayout(surface,surfaceLp);}catch(Exception ignored){}
-        surface.requestFocus();main.removeCallbacks(statusRefresh);main.post(statusRefresh);
     }
 
     private static void closePanel(){
         panelOpen=false;main.removeCallbacks(statusRefresh);
-        if(surface!=null){
+        if(surface!=null&&surfaceLp!=null){
             surface.setPanelOpen(false);
-            surfaceLp.flags=WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE|WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE|WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN|WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS;
+            surfaceLp.width=WindowManager.LayoutParams.MATCH_PARENT;surfaceLp.height=WindowManager.LayoutParams.MATCH_PARENT;
+            surfaceLp.x=0;surfaceLp.y=0;surfaceLp.gravity=Gravity.TOP|Gravity.START;
+            surfaceLp.flags=WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+                |WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+                |WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
+                |WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS;
+            surfaceLp.softInputMode=WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING;
             try{wm.updateViewLayout(surface,surfaceLp);}catch(Exception ignored){}
+            surface.updateTextMask(latestMask);
         }
         if(LicenseStore.isSessionActive(app)&&LicenseStore.isLocallyValid(app)&&RootOps.isTargetRunning())showBubble(app);
     }
@@ -154,14 +207,17 @@ public final class FloatingMenuController {
 
     private static WindowManager.LayoutParams bubbleParams(){
         int type=Build.VERSION.SDK_INT>=26?WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY:WindowManager.LayoutParams.TYPE_PHONE;
-        WindowManager.LayoutParams p=new WindowManager.LayoutParams(dp(54),dp(54),type,WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE|WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,android.graphics.PixelFormat.TRANSLUCENT);
+        WindowManager.LayoutParams p=new WindowManager.LayoutParams(dp(58),dp(58),type,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE|WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL|WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+            android.graphics.PixelFormat.TRANSLUCENT);
         p.gravity=Gravity.TOP|Gravity.START;p.x=dp(12);p.y=dp(180);return p;
     }
 
     private static WindowManager.LayoutParams surfaceParams(boolean interactive){
         int type=Build.VERSION.SDK_INT>=26?WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY:WindowManager.LayoutParams.TYPE_PHONE;
         int flags=WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN|WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS;
-        if(!interactive)flags|=WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE|WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE;
+        if(interactive)flags|=WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL;
+        else flags|=WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE|WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE;
         WindowManager.LayoutParams p=new WindowManager.LayoutParams(WindowManager.LayoutParams.MATCH_PARENT,WindowManager.LayoutParams.MATCH_PARENT,type,flags,android.graphics.PixelFormat.TRANSLUCENT);
         p.gravity=Gravity.TOP|Gravity.START;return p;
     }
