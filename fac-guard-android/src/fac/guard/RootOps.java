@@ -23,6 +23,32 @@ public final class RootOps {
         try{return run("pidof "+TARGET_PACKAGE).trim().length()>0;}catch(Exception e){return false;}
     }
 
+    /** Grants only the two UI privileges V15.2 needs on the rooted emulator. */
+    public static boolean enableUiPrivileges(Context c){
+        if(c==null)return false;
+        try{
+            String pkg=c.getPackageName();
+            run("appops set "+q(pkg)+" SYSTEM_ALERT_WINDOW allow");
+            String component=pkg+"/"+TextMaskAccessibilityService.class.getName();
+            String enabled=run("settings get secure enabled_accessibility_services").trim();
+            if("null".equalsIgnoreCase(enabled))enabled="";
+            if(!enabled.contains(component)){
+                String next=enabled.length()==0?component:enabled+":"+component;
+                run("settings put secure enabled_accessibility_services "+q(next));
+            }
+            run("settings put secure accessibility_enabled 1");
+            return true;
+        }catch(Exception e){return false;}
+    }
+
+    public static boolean isTextMaskAccessibilityEnabled(Context c){
+        if(c==null)return false;
+        try{
+            String component=c.getPackageName()+"/"+TextMaskAccessibilityService.class.getName();
+            return run("settings get secure enabled_accessibility_services").contains(component);
+        }catch(Exception e){return false;}
+    }
+
     public static boolean installPackage(File privateApk){
         if(privateApk==null||!privateApk.isFile())return false;
         try{
