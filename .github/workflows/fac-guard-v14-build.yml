@@ -6,6 +6,11 @@ on:
     paths:
       - 'fac-guard-android/**'
       - '.github/workflows/fac-guard-v14-build.yml'
+  pull_request:
+    branches: [ "main" ]
+    paths:
+      - 'fac-guard-android/**'
+      - '.github/workflows/fac-guard-v14-build.yml'
   workflow_dispatch:
 
 jobs:
