@@ -47,7 +47,7 @@ public class MainActivity extends Activity {
         LinearLayout root=new LinearLayout(this);root.setOrientation(LinearLayout.VERTICAL);root.setPadding(dp(24),dp(28),dp(24),dp(28));
         scroll.addView(root,new ScrollView.LayoutParams(-1,-2));
 
-        TextView title=text("FAC Guard V15.2.1",28);title.setGravity(Gravity.CENTER);root.addView(title);
+        TextView title=text("FAC Guard V15.2.3",28);title.setGravity(Gravity.CENTER);root.addView(title);
         TextView sub=text("Single APK • encrypted original runtime payload",13);sub.setGravity(Gravity.CENTER);sub.setTextColor(Color.LTGRAY);sub.setPadding(0,dp(4),0,dp(22));root.addView(sub);
 
         rootStatus=text("Root: checking...",14);root.addView(rootStatus);
@@ -64,7 +64,7 @@ public class MainActivity extends Activity {
         toggleGuard=new Button(this);toggleGuard.setOnClickListener(v->toggleGuard());root.addView(toggleGuard,new LinearLayout.LayoutParams(-1,dp(50)));
 
         eventStatus=text("",12);eventStatus.setTextColor(Color.GRAY);eventStatus.setPadding(0,dp(16),0,dp(8));root.addView(eventStatus);
-        TextView note=text("V15.2.1 keeps the known-good original Aiwan/CoC APK byte-identical. FAC verifies the encrypted payload, stages it through root with a hard timeout, installs the original signed APK, then protects it with FAC Guard. The NX/Lua APK itself is never patched or re-signed.",12);note.setTextColor(Color.GRAY);root.addView(note);
+        TextView note=text("V15.2.3 keeps the known-good original Aiwan/CoC APK byte-identical. FAC verifies the encrypted payload, stages it through root with a hard timeout, installs the original signed APK, then protects it with FAC Guard. The NX/Lua APK itself is never patched or re-signed.",12);note.setTextColor(Color.GRAY);root.addView(note);
         setContentView(scroll);
     }
 
@@ -174,7 +174,7 @@ public class MainActivity extends Activity {
         runOnUiThread(()->{
             try{
                 startActivity(launch);
-                LicenseStore.setLastEvent(this,"Byte-identical original runtime launched under FAC Guard V15.2.1.");
+                LicenseStore.setLastEvent(this,"Byte-identical original runtime launched under FAC Guard V15.2.3.");
                 finish();
             }catch(Exception e){
                 LicenseStore.clearSession(this);
