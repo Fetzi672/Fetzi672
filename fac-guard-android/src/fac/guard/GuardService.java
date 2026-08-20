@@ -7,10 +7,10 @@ import java.io.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public class GuardService extends Service {
-    public static final String CHANNEL_ID="fac_guard_v14";
+    public static final String CHANNEL_ID="fac_guard_v15";
     public static final String ACTION_ARM="fac.guard.ARM";
     public static final String ACTION_DISARM="fac.guard.DISARM";
-    private static final int NOTIFY_ID=14014;
+    private static final int NOTIFY_ID=15015;
     private static final long LOCAL_CHECK_MS=30000L;
     private static final long SERVER_RECHECK_MS=5L*60L*1000L;
 
@@ -26,7 +26,7 @@ public class GuardService extends Service {
     @Override public void onCreate(){
         super.onCreate();
         createChannel();
-        startForeground(NOTIFY_ID,notification("FAC Guard armed • waiting for original app"));
+        startForeground(NOTIFY_ID,notification("FAC Guard armed • waiting for original runtime"));
         long anchor=LicenseStore.verificationElapsed(this);
         long now=SystemClock.elapsedRealtime();
         lastServerCheckElapsed=(anchor>0&&anchor<=now)?anchor:now;
@@ -90,9 +90,9 @@ public class GuardService extends Service {
 
     private void onTargetStarted(){
         if(interceptBusy.get())return;
-        if(LicenseStore.isSessionActive(this)&&LicenseStore.isLocallyValid(this)){
+        if(LicenseStore.isSessionActive(this)&&LicenseStore.isLocallyValid(this)&&PayloadManager.isExpectedRuntimeInstalled(this)){
             lastTargetRunning=true;
-            updateNotification("FAC license active • original protected");
+            updateNotification("FAC license active • original runtime protected");
             return;
         }
         if(!interceptBusy.compareAndSet(false,true))return;
@@ -111,7 +111,9 @@ public class GuardService extends Service {
         @Override public void run(){
             if(!LicenseStore.isArmed(GuardService.this))return;
             if(LicenseStore.isSessionActive(GuardService.this)){
-                if(!LicenseStore.isLocallyValid(GuardService.this)){
+                if(!PayloadManager.isExpectedRuntimeInstalled(GuardService.this)){
+                    enforceLock("Original runtime missing or signer changed",lastTargetRunning);
+                }else if(!LicenseStore.isLocallyValid(GuardService.this)){
                     enforceLock("License expired or local state invalid",lastTargetRunning);
                 }else if(!RootOps.hasRoot()){
                     enforceLock("Root access lost",lastTargetRunning);
@@ -180,8 +182,8 @@ public class GuardService extends Service {
         if(Build.VERSION.SDK_INT>=26){
             NotificationManager nm=(NotificationManager)getSystemService(NOTIFICATION_SERVICE);
             if(nm!=null){
-                NotificationChannel ch=new NotificationChannel(CHANNEL_ID,"FAC Guard V14",NotificationManager.IMPORTANCE_LOW);
-                ch.setDescription("Root guard for the original FAC runtime");
+                NotificationChannel ch=new NotificationChannel(CHANNEL_ID,"FAC Guard V15",NotificationManager.IMPORTANCE_LOW);
+                ch.setDescription("Root guard for the embedded original FAC runtime");
                 nm.createNotificationChannel(ch);
             }
         }
@@ -191,9 +193,9 @@ public class GuardService extends Service {
         Intent open=new Intent(this,MainActivity.class);
         int pf=PendingIntent.FLAG_UPDATE_CURRENT;
         if(Build.VERSION.SDK_INT>=23)pf|=PendingIntent.FLAG_IMMUTABLE;
-        PendingIntent pi=PendingIntent.getActivity(this,14014,open,pf);
+        PendingIntent pi=PendingIntent.getActivity(this,15015,open,pf);
         Notification.Builder b=Build.VERSION.SDK_INT>=26?new Notification.Builder(this,CHANNEL_ID):new Notification.Builder(this);
-        b.setContentTitle("FAC Guard V14")
+        b.setContentTitle("FAC Guard V15")
             .setContentText(text)
             .setSmallIcon(android.R.drawable.ic_lock_lock)
             .setOngoing(true)
