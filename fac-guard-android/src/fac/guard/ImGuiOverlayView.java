@@ -11,17 +11,24 @@ import android.view.inputmethod.*;
 import javax.microedition.khronos.egl.EGLConfig;
 import javax.microedition.khronos.opengles.GL10;
 
-/** Persistent transparent ImGui surface: text masks/toasts stay live while the heavy panel remains closed. */
+/**
+ * Transparent Dear ImGui surface. When the panel is closed the WindowManager
+ * keeps this view fullscreen but NOT_TOUCHABLE for masks/toasts. When opened,
+ * FloatingMenuController resizes the actual Android window to the panel bounds,
+ * so touches outside the panel pass straight through to the protected app.
+ */
 public final class ImGuiOverlayView extends GLSurfaceView implements GLSurfaceView.Renderer {
     public interface Listener {
         void onClose();
         void onSave(String settingsProtocol);
         void onRecheck();
+        void onLayout(float widthFraction,float heightFraction,float uiScale);
     }
 
     private static final int ACTION_CLOSE=1;
     private static final int ACTION_SAVE=2;
     private static final int ACTION_RECHECK=4;
+    private static final int ACTION_LAYOUT=8;
     private final Listener listener;
     private final Handler main=new Handler(Looper.getMainLooper());
     private final float density;
@@ -57,10 +64,24 @@ public final class ImGuiOverlayView extends GLSurfaceView implements GLSurfaceVi
         if(wants!=keyboardShown){keyboardShown=wants;main.post(()->setKeyboardVisible(wants));}
         if(action!=0){
             if((action&ACTION_RECHECK)!=0&&listener!=null)main.post(listener::onRecheck);
-            if((action&ACTION_SAVE)!=0&&listener!=null){final String dump=nativeDumpSettings();main.post(()->listener.onSave(dump));}
-            else if((action&ACTION_CLOSE)!=0&&listener!=null)main.post(listener::onClose);
+            if((action&ACTION_LAYOUT)!=0&&listener!=null){
+                final String layout=nativeDumpUiLayout();
+                main.post(()->dispatchLayout(layout));
+            }
+            if((action&ACTION_SAVE)!=0&&listener!=null){
+                final String dump=nativeDumpSettings();main.post(()->listener.onSave(dump));
+            }else if((action&ACTION_CLOSE)!=0&&listener!=null)main.post(listener::onClose);
         }
         if(nativeNeedsAnimation())scheduleRender(33L);
+    }
+
+    private void dispatchLayout(String layout){
+        if(listener==null||layout==null)return;
+        try{
+            String[] x=layout.split("\\t");
+            if(x.length<3)return;
+            listener.onLayout(Float.parseFloat(x[0]),Float.parseFloat(x[1]),Float.parseFloat(x[2]));
+        }catch(Exception ignored){}
     }
 
     private void scheduleRender(long delay){
@@ -74,9 +95,12 @@ public final class ImGuiOverlayView extends GLSurfaceView implements GLSurfaceVi
     public void updateSettings(String settings){nativeCall(()->nativeSetSettings(settings==null?"":settings));}
     public void updateTextMask(String protocol){nativeCall(()->nativeSetTextMask(protocol==null?"":protocol));}
     public void setPanelOpen(boolean open){nativeCall(()->nativeSetPanelOpen(open));}
+    public void setUiLayout(float widthFraction,float heightFraction,float scale){nativeCall(()->nativeSetUiLayout(widthFraction,heightFraction,scale));}
     public void notify(int type,String title,String content){nativeCall(()->nativeNotify(type,title==null?"":title,content==null?"":content));}
 
-    @Override public boolean onTouchEvent(android.view.MotionEvent e){requestFocus();nativeTouch(e.getActionMasked(),e.getX(),e.getY());requestRender();return true;}
+    @Override public boolean onTouchEvent(android.view.MotionEvent e){
+        requestFocus();nativeTouch(e.getActionMasked(),e.getX(),e.getY());requestRender();return true;
+    }
     @Override public boolean dispatchKeyEvent(KeyEvent event){nativeKey(event.getKeyCode(),event.getAction(),event.getUnicodeChar());requestRender();return true;}
     @Override public boolean onCheckIsTextEditor(){return true;}
 
@@ -111,10 +135,12 @@ public final class ImGuiOverlayView extends GLSurfaceView implements GLSurfaceVi
     private static native boolean nativeWantsTextInput();
     private static native boolean nativeNeedsAnimation();
     private static native String nativeDumpSettings();
+    private static native String nativeDumpUiLayout();
     private static native void nativeSetStatus(String status);
     private static native void nativeSetSettings(String settings);
     private static native void nativeSetTextMask(String protocol);
     private static native void nativeSetPanelOpen(boolean open);
+    private static native void nativeSetUiLayout(float widthFraction,float heightFraction,float scale);
     private static native void nativeNotify(int type,String title,String content);
     private static native void nativeShutdown();
 }
