@@ -93,7 +93,7 @@ public final class FloatingMenuController {
             }
             @Override public void onRecheck(){
                 LicenseStore.setLastEvent(app,"License recheck in progress...");
-                GuardService.recheckNow(app);
+                LicenseRecheckBridge.recheck(app);
             }
         });
         try{
