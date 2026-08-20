@@ -17,7 +17,7 @@ import javax.crypto.spec.SecretKeySpec;
  * FAC Guard V15 runtime payload manager.
  *
  * The known-good original APK is embedded in the Guard APK as an AES-GCM
- * encrypted binary asset named fac_runtime.bin.  It is never repacked or
+ * encrypted binary asset named fac_runtime.bin. It is never repacked or
  * re-signed: after decryption we verify both its exact APK SHA-256 and its
  * original signing certificate before root installs those exact plaintext
  * bytes as com.cocfz.com.freescript.
@@ -30,10 +30,6 @@ public final class PayloadManager {
     private static final String EXPECTED_APK_SHA256="1f98bac15ee733a5be48a51ed132d1918ff185bbdcc6b85a71603d835e1ad935";
     private static final String EXPECTED_CERT_SHA256="9fb2fd402397312752fee5f7c08b5d65c7bbad437287a3e8236bd83c06ed2ecc";
 
-    // Distribution-layer key only. It intentionally does not pretend to be a
-    // hardware secret: a determined root user can ultimately obtain plaintext
-    // because Android must install it. Splitting the constant merely avoids a
-    // single obvious full key string in the DEX string table.
     private static final String K1="TVDnfJ+qMATE";
     private static final String K2="qm/Sar12RcAZ";
     private static final String K3="AUFNhMPoacgu";
@@ -65,7 +61,10 @@ public final class PayloadManager {
         try{
             decryptAndVerify(c,outFile);
             verifyArchive(c,outFile);
-            if(!RootOps.installPackage(outFile))throw new IOException("Root package installation failed.");
+            if(!RootOps.installPackage(outFile)){
+                String why=RootOps.lastInstallError();
+                throw new IOException(why.length()==0?"Root package installation failed.":why);
+            }
             if(!isExpectedRuntimeInstalled(c))throw new SecurityException("Installed runtime signature verification failed.");
             return true;
         }finally{
