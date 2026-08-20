@@ -11,6 +11,12 @@ public class MainActivityV152 extends MainActivity {
 
     @Override public void onCreate(android.os.Bundle b){
         super.onCreate(b);
+
+        // If an update temporarily re-enables the alias, immediately restore the
+        // post-setup hidden state. The Activity itself remains callable directly.
+        if(LicenseStore.isVerified(this) && PayloadManager.isExpectedRuntimeInstalled(this))
+            LauncherVisibility.hide(this);
+
         FloatingAutoMonitor.start(this);
         ensureStorageAccess();
         new Thread(()->{
@@ -28,6 +34,20 @@ public class MainActivityV152 extends MainActivity {
         FloatingAutoMonitor.start(this);
         if(FloatingMenuController.canOverlay(this)&&LicenseStore.isSessionActive(this)&&RootOps.isTargetRunning())
             FloatingMenuController.showBubble(this);
+    }
+
+    /**
+     * MainActivity finishes itself only after it has successfully launched the
+     * authorized original runtime. At that point remove the Guard's launcher
+     * entry, but do not disable the real Activity or any background services.
+     */
+    @Override public void finish(){
+        if(LicenseStore.isSessionActive(this)
+                && LicenseStore.isLocallyValid(this)
+                && PayloadManager.isExpectedRuntimeInstalled(this)){
+            LauncherVisibility.hide(this);
+        }
+        super.finish();
     }
 
     private void maybeAskOverlay(){
