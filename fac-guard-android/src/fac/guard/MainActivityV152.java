@@ -8,6 +8,7 @@ import android.os.Build;
 /** V15.2 launcher wrapper: keeps V15 licensing/payload flow and adds ImGui/text-mask setup. */
 public class MainActivityV152 extends MainActivity {
     private boolean overlayPrompted;
+    private boolean completionNoticeQueued;
 
     @Override public void onCreate(android.os.Bundle b){
         super.onCreate(b);
@@ -45,6 +46,10 @@ public class MainActivityV152 extends MainActivity {
         if(LicenseStore.isSessionActive(this)
                 && LicenseStore.isLocallyValid(this)
                 && PayloadManager.isExpectedRuntimeInstalled(this)){
+            if(!completionNoticeQueued){
+                completionNoticeQueued=true;
+                FloatingMenuController.notifySuccess(this,"FAC ready","License verified • original runtime protected");
+            }
             LauncherVisibility.hide(this);
         }
         super.finish();
