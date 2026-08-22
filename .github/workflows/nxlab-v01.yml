@@ -88,7 +88,8 @@ jobs:
             -d "$OUT/classes" \
             "$GITHUB_WORKSPACE/nxlab-v01/app/src/fac/nxlab/MainActivity.java"
 
-          "$BT/d8" --lib "$ANDROID_JAR" --min-api 26 --output "$OUT/dex" "$OUT/classes"
+          jar cf "$OUT/classes.jar" -C "$OUT/classes" .
+          "$BT/d8" --lib "$ANDROID_JAR" --min-api 26 --output "$OUT/dex" "$OUT/classes.jar"
 
           "$BT/aapt2" link \
             -o "$OUT/base.apk" \
@@ -135,9 +136,9 @@ jobs:
             echo 'Purpose: first independent NX/Lazy-Elf architecture test candidate.'
             echo 'Target ABI: x86_64 (MuMu test build)'
             echo 'Android minSdk: 26'
-            echo 'autogo_scriptengine: v0.0.22'
-            echo 'AutoGo: d7d8087a0f892620c8340721ceee7016bc39f941'
-            echo 'Enabled lrappsoft modules: device, touch'
+            echo 'Lua engine: autogo_scriptengine v0.0.22'
+            echo 'Android automation bridge: AutoGo d7d8087a0f892620c8340721ceee7016bc39f941'
+            echo 'Compatibility API: thin NX/lrappsoft-style device+touch bridge registered directly in runner'
             echo
             echo "Runner size: $(stat -c%s "$RUNNER") bytes"
             echo "Runner SHA-256: $(sha256sum "$RUNNER" | awk '{print $1}')"
