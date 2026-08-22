@@ -1,0 +1,166 @@
+name: FAC NX Lab v0.1 Build
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - chatgpt/nxlab-v01-20260822
+    paths:
+      - 'nxlab-v01/**'
+      - '.github/workflows/nxlab-v01.yml'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'nxlab-v01/**'
+      - '.github/workflows/nxlab-v01.yml'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+
+    steps:
+      - name: Checkout project
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.0'
+          cache: false
+
+      - name: Install Android SDK packages
+        shell: bash
+        run: |
+          set -euxo pipefail
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
+            'platforms;android-35' \
+            'build-tools;35.0.0' \
+            'ndk;27.2.12479018'
+
+      - name: Clone pinned open-source engine sources
+        shell: bash
+        run: |
+          set -euxo pipefail
+          rm -rf /tmp/autogo_scriptengine
+          git clone --depth 1 --branch v0.0.22 https://github.com/ZingYao/autogo_scriptengine.git /tmp/autogo_scriptengine
+          git clone https://github.com/Dasongzi1366/AutoGo.git /tmp/autogo_scriptengine/AutoGo
+          cd /tmp/autogo_scriptengine/AutoGo
+          git checkout d7d8087a0f892620c8340721ceee7016bc39f941
+          cd /tmp/autogo_scriptengine
+          mkdir -p cmd/nxlab
+          cp "$GITHUB_WORKSPACE/nxlab-v01/runner/main.go" cmd/nxlab/main.go
+          go mod download
+
+      - name: Build x86_64 Android Lua runner
+        shell: bash
+        run: |
+          set -euxo pipefail
+          NDK="$ANDROID_HOME/ndk/27.2.12479018"
+          TOOLCHAIN="$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          mkdir -p "$GITHUB_WORKSPACE/build/runner/x86_64"
+          cd /tmp/autogo_scriptengine
+          export GOOS=android
+          export GOARCH=amd64
+          export CGO_ENABLED=1
+          export CC="$TOOLCHAIN/x86_64-linux-android26-clang"
+          export CXX="$TOOLCHAIN/x86_64-linux-android26-clang++"
+          export CGO_LDFLAGS='-llog -landroid -ldl'
+          go build -trimpath -ldflags='-s -w' -o "$GITHUB_WORKSPACE/build/runner/x86_64/nxlab-runner" ./cmd/nxlab
+          file "$GITHUB_WORKSPACE/build/runner/x86_64/nxlab-runner"
+          sha256sum "$GITHUB_WORKSPACE/build/runner/x86_64/nxlab-runner"
+
+      - name: Build Android shell APK
+        shell: bash
+        run: |
+          set -euxo pipefail
+          BT="$ANDROID_HOME/build-tools/35.0.0"
+          ANDROID_JAR="$ANDROID_HOME/platforms/android-35/android.jar"
+          OUT="$GITHUB_WORKSPACE/build/app"
+          rm -rf "$OUT"
+          mkdir -p "$OUT/classes" "$OUT/dex" "$OUT/assets/runner/x86_64" "$OUT/final"
+          cp "$GITHUB_WORKSPACE/build/runner/x86_64/nxlab-runner" "$OUT/assets/runner/x86_64/nxlab-runner"
+
+          javac -source 8 -target 8 -encoding UTF-8 \
+            -classpath "$ANDROID_JAR" \
+            -d "$OUT/classes" \
+            "$GITHUB_WORKSPACE/nxlab-v01/app/src/fac/nxlab/MainActivity.java"
+
+          jar cf "$OUT/classes.jar" -C "$OUT/classes" .
+          "$BT/d8" --lib "$ANDROID_JAR" --min-api 26 --output "$OUT/dex" "$OUT/classes.jar"
+
+          "$BT/aapt2" link \
+            -o "$OUT/base.apk" \
+            -I "$ANDROID_JAR" \
+            --manifest "$GITHUB_WORKSPACE/nxlab-v01/app/AndroidManifest.xml" \
+            --min-sdk-version 26 \
+            --target-sdk-version 30 \
+            -A "$OUT/assets"
+
+          cp "$OUT/base.apk" "$OUT/unsigned.apk"
+          (cd "$OUT/dex" && zip -q "$OUT/unsigned.apk" classes.dex)
+          "$BT/zipalign" -p -f 4 "$OUT/unsigned.apk" "$OUT/aligned.apk"
+
+          PASS="$(openssl rand -hex 20)"
+          keytool -genkeypair -noprompt \
+            -keystore "$OUT/nxlab-test.jks" \
+            -storepass "$PASS" -keypass "$PASS" \
+            -alias nxlab \
+            -keyalg RSA -keysize 2048 -validity 3650 \
+            -dname 'CN=FAC NX Lab v0.1 Test,O=FAC' >/dev/null 2>&1
+
+          "$BT/apksigner" sign \
+            --ks "$OUT/nxlab-test.jks" \
+            --ks-key-alias nxlab \
+            --ks-pass "pass:$PASS" \
+            --key-pass "pass:$PASS" \
+            --out "$OUT/final/FAC_NX_Lab_v0.1_x86_64.apk" \
+            "$OUT/aligned.apk"
+
+          "$BT/apksigner" verify --verbose "$OUT/final/FAC_NX_Lab_v0.1_x86_64.apk"
+          unzip -t "$OUT/final/FAC_NX_Lab_v0.1_x86_64.apk"
+          rm -f "$OUT/nxlab-test.jks"
+
+      - name: Create build report
+        shell: bash
+        run: |
+          set -euxo pipefail
+          APK="$GITHUB_WORKSPACE/build/app/final/FAC_NX_Lab_v0.1_x86_64.apk"
+          RUNNER="$GITHUB_WORKSPACE/build/runner/x86_64/nxlab-runner"
+          {
+            echo 'FAC NX Lab v0.1 build report'
+            echo '============================='
+            echo
+            echo 'Purpose: first independent NX/Lazy-Elf architecture test candidate.'
+            echo 'Target ABI: x86_64 (MuMu test build)'
+            echo 'Android minSdk: 26'
+            echo 'Lua engine: autogo_scriptengine v0.0.22'
+            echo 'Android automation bridge: AutoGo d7d8087a0f892620c8340721ceee7016bc39f941'
+            echo 'Compatibility API: thin NX/lrappsoft-style device+touch bridge registered directly in runner'
+            echo
+            echo "Runner size: $(stat -c%s "$RUNNER") bytes"
+            echo "Runner SHA-256: $(sha256sum "$RUNNER" | awk '{print $1}')"
+            echo "APK size: $(stat -c%s "$APK") bytes"
+            echo "APK SHA-256: $(sha256sum "$APK" | awk '{print $1}')"
+            echo
+            echo 'Self-test APIs:'
+            echo '- Lua execution'
+            echo '- getSystemInfo()'
+            echo '- getPackageName() / getActivityName()'
+            echo '- getBatteryLevel() / getWorkPath()'
+            echo '- touch.isRooted()'
+            echo '- tap(x,y) via explicit delayed touch test'
+            echo '- external /sdcard/Download/NXLab/main.lua hot-load'
+          } > "$GITHUB_WORKSPACE/build/app/final/BUILD_REPORT.txt"
+          cp "$GITHUB_WORKSPACE/nxlab-v01/runner/main.go" "$GITHUB_WORKSPACE/build/app/final/runner-main.go"
+          cp "$GITHUB_WORKSPACE/nxlab-v01/app/src/fac/nxlab/MainActivity.java" "$GITHUB_WORKSPACE/build/app/final/MainActivity.java"
+          sha256sum "$GITHUB_WORKSPACE/build/app/final/FAC_NX_Lab_v0.1_x86_64.apk" > "$GITHUB_WORKSPACE/build/app/final/FAC_NX_Lab_v0.1_x86_64.sha256"
+
+      - name: Upload candidate
+        uses: actions/upload-artifact@v4
+        with:
+          name: FAC-NX-Lab-v0.1-x86_64
+          path: build/app/final/*
+          if-no-files-found: error
