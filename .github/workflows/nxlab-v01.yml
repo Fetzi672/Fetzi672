@@ -8,6 +8,12 @@ on:
     paths:
       - 'nxlab-v01/**'
       - '.github/workflows/nxlab-v01.yml'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'nxlab-v01/**'
+      - '.github/workflows/nxlab-v01.yml'
 
 jobs:
   build:
