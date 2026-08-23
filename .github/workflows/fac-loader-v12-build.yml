@@ -1,0 +1,91 @@
+name: FAC Loader V12 APK Build
+on:
+  push:
+    branches: [ "chatgpt/fac-apk-toolchain-20260818" ]
+    paths:
+      - 'fac-loader-android/**'
+      - '.github/workflows/fac-loader-v12-build.yml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build standalone FAC Loader APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          ANDROID_JAR=$(find "$ANDROID_HOME/platforms" -maxdepth 2 -name android.jar | sort -V | tail -1)
+          BUILD_TOOLS=$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)
+          AAPT2="$BUILD_TOOLS/aapt2"
+          D8="$BUILD_TOOLS/d8"
+          ZIPALIGN="$BUILD_TOOLS/zipalign"
+          APKSIGNER="$BUILD_TOOLS/apksigner"
+          echo "Using Android jar: $ANDROID_JAR"
+          echo "Using build tools: $BUILD_TOOLS"
+
+          rm -rf fac-loader-android/out
+          mkdir -p fac-loader-android/out/classes fac-loader-android/out/dex fac-loader-android/dist
+
+          javac -source 8 -target 8 -encoding UTF-8 \
+            -cp "$ANDROID_JAR" \
+            -d fac-loader-android/out/classes \
+            $(find fac-loader-android/src -name '*.java' -print)
+
+          "$D8" --min-api 23 --lib "$ANDROID_JAR" \
+            --output fac-loader-android/out/dex \
+            $(find fac-loader-android/out/classes -name '*.class' -print)
+
+          test -s fac-loader-android/out/dex/classes.dex
+
+          "$AAPT2" link \
+            -I "$ANDROID_JAR" \
+            --manifest fac-loader-android/AndroidManifest.xml \
+            --min-sdk-version 23 \
+            --target-sdk-version 28 \
+            --version-code 12 \
+            --version-name 12.0 \
+            -o fac-loader-android/out/base.apk
+
+          cp fac-loader-android/out/base.apk fac-loader-android/out/unaligned.apk
+          (cd fac-loader-android/out/dex && zip -q -j ../unaligned.apk classes.dex)
+          "$ZIPALIGN" -f 4 fac-loader-android/out/unaligned.apk fac-loader-android/out/aligned.apk
+
+          PASS=$(openssl rand -hex 24)
+          keytool -genkeypair -noprompt \
+            -keystore fac-loader-android/out/fac-loader-test.jks \
+            -storepass "$PASS" -keypass "$PASS" \
+            -alias facloader -keyalg RSA -keysize 2048 -validity 3650 \
+            -dname "CN=FAC Loader V12 Test,O=FAC"
+
+          "$APKSIGNER" sign \
+            --ks fac-loader-android/out/fac-loader-test.jks \
+            --ks-pass "pass:$PASS" --key-pass "pass:$PASS" \
+            --out fac-loader-android/dist/FAC_Loader_v12.apk \
+            fac-loader-android/out/aligned.apk
+
+          "$APKSIGNER" verify --verbose --print-certs fac-loader-android/dist/FAC_Loader_v12.apk
+          "$AAPT2" dump badging fac-loader-android/dist/FAC_Loader_v12.apk | head -20
+          sha256sum fac-loader-android/dist/FAC_Loader_v12.apk | tee fac-loader-android/dist/FAC_Loader_v12.sha256
+          cp fac-loader-android/README.md fac-loader-android/dist/README.md
+
+          cat > fac-loader-android/dist/BUILD_INFO.txt <<'EOF'
+          FAC Loader V12
+          Target original package: com.cocfz.com.freescript
+          Original APK modification: NONE
+          License endpoint: https://fac.fetzi-ai.de/api/android/licenses/verify
+          License appVersion: 310.0
+          Local expiry check: 30 seconds
+          Server recheck: 5 minutes
+          Guard policy: fail closed, root force-stop original package
+          Direct-launch hardening: intentionally deferred until runtime compatibility is confirmed
+          EOF
+
+      - name: Upload FAC Loader APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: FAC-Loader-v12
+          path: fac-loader-android/dist/*
+          if-no-files-found: error

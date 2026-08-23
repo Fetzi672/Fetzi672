@@ -1,0 +1,33 @@
+name: Export Android Build Kit
+
+on:
+  push:
+    branches: [ "chatgpt/fac-apk-toolchain-20260818" ]
+    paths:
+      - '.github/workflows/export-android-buildkit.yml'
+  workflow_dispatch:
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Collect Android build kit
+        shell: bash
+        run: |
+          set -euo pipefail
+          ANDROID_JAR=$(find "$ANDROID_HOME/platforms" -maxdepth 2 -name android.jar | sort -V | tail -1)
+          BUILD_TOOLS=$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)
+          mkdir -p android-buildkit/platform android-buildkit/build-tools
+          cp "$ANDROID_JAR" android-buildkit/platform/android.jar
+          cp -a "$BUILD_TOOLS"/. android-buildkit/build-tools/
+          printf '%s\n' "$BUILD_TOOLS" > android-buildkit/BUILD_TOOLS_SOURCE.txt
+          sha256sum android-buildkit/platform/android.jar > android-buildkit/SHA256SUMS.txt
+          find android-buildkit/build-tools -maxdepth 2 -type f \( -name 'aapt2' -o -name 'd8' -o -name 'apksigner' -o -name 'zipalign' -o -name 'd8.jar' -o -name 'apksigner.jar' \) -print
+      - name: Upload Android build kit
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-buildkit
+          path: android-buildkit/**
+          if-no-files-found: error
+          compression-level: 6
