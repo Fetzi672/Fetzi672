@@ -69,12 +69,12 @@ public final class ScanService extends Service {
     }
 
     private void setupCapture(){
-        DisplayMetrics dm=new DisplayMetrics(); getDisplay().getRealMetrics(dm); width=dm.widthPixels;height=dm.heightPixels;density=dm.densityDpi;
+        DisplayMetrics dm=new DisplayMetrics(); realDisplay().getRealMetrics(dm); width=dm.widthPixels;height=dm.heightPixels;density=dm.densityDpi;
         reader=ImageReader.newInstance(width,height,PixelFormat.RGBA_8888,2); reader.setOnImageAvailableListener(this::consumeFrame,captureHandler);
         virtualDisplay=projection.createVirtualDisplay("FAC-NXLab-Debug",width,height,density,DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,reader.getSurface(),null,captureHandler);
         status("Capture surface "+width+"x"+height+" @ "+density+"dpi");
     }
-    private Display getDisplay(){WindowManager w=(WindowManager)getSystemService(WINDOW_SERVICE);return w.getDefaultDisplay();}
+    private Display realDisplay(){WindowManager w=(WindowManager)getSystemService(WINDOW_SERVICE);return w.getDefaultDisplay();}
     private void consumeFrame(ImageReader r){Image im=null;try{im=r.acquireLatestImage();if(im==null)return;long now=SystemClock.uptimeMillis();if(now-lastFrameAt<180)return;lastFrameAt=now;Image.Plane p=im.getPlanes()[0];ByteBuffer b=p.getBuffer();int pix=p.getPixelStride(),row=p.getRowStride(),pad=row-pix*width,paddedW=width+Math.max(0,pad/Math.max(1,pix));Bitmap padded=Bitmap.createBitmap(paddedW,height,Bitmap.Config.ARGB_8888);b.rewind();padded.copyPixelsFromBuffer(b);Bitmap frame=paddedW==width?padded:Bitmap.createBitmap(padded,0,0,width,height);if(frame!=padded)padded.recycle();synchronized(frameLock){Bitmap old=latestFrame;latestFrame=frame;if(old!=null&&old!=frame&&!old.isRecycled())old.recycle();}}catch(Throwable t){status("Frame warning: "+t.getClass().getSimpleName());}finally{if(im!=null)im.close();}}
     private Bitmap copyFrame(){synchronized(frameLock){if(latestFrame==null||latestFrame.isRecycled())return null;return latestFrame.copy(Bitmap.Config.ARGB_8888,false);}}
 
