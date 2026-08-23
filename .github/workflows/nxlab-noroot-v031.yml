@@ -1,0 +1,69 @@
+name: FAC NX Lab Non-Root v0.3.1 Debug Build
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [chatgpt/nxlab-noroot-v031-20260823]
+    paths:
+      - 'nxlab-noroot-v031/**'
+      - '.github/workflows/nxlab-noroot-v031.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'nxlab-noroot-v031/**'
+      - '.github/workflows/nxlab-noroot-v031.yml'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Android SDK packages
+        shell: bash
+        run: |
+          set -euxo pipefail
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-35' 'build-tools;35.0.0'
+      - name: Build Java APK shell
+        shell: bash
+        run: |
+          set -euxo pipefail
+          BT="$ANDROID_HOME/build-tools/35.0.0"
+          AJ="$ANDROID_HOME/platforms/android-35/android.jar"
+          OUT="$GITHUB_WORKSPACE/build/v031"
+          rm -rf "$OUT" && mkdir -p "$OUT/classes" "$OUT/dex" "$OUT/assets/templates" "$OUT/final"
+          javac -source 8 -target 8 -encoding UTF-8 -classpath "$AJ" -d "$OUT/classes" \
+            "$GITHUB_WORKSPACE/nxlab-noroot-v031/app/src/fac/nxlab/noroot/debug/MainActivity.java" \
+            "$GITHUB_WORKSPACE/nxlab-noroot-v031/app/src/fac/nxlab/noroot/debug/ScanService.java" \
+            "$GITHUB_WORKSPACE/nxlab-noroot-v031/app/src/fac/nxlab/noroot/debug/MatchOverlayView.java"
+          (cd "$OUT/classes" && jar cf "$OUT/classes.jar" .)
+          "$BT/d8" --lib "$AJ" --min-api 26 --output "$OUT/dex" "$OUT/classes.jar"
+          "$BT/aapt2" link -o "$OUT/base.apk" -I "$AJ" \
+            --manifest "$GITHUB_WORKSPACE/nxlab-noroot-v031/app/AndroidManifest.xml" \
+            --min-sdk-version 26 --target-sdk-version 30 -A "$OUT/assets" \
+            --version-code 31 --version-name 0.3.1
+          cp "$OUT/base.apk" "$OUT/unsigned.apk"
+          (cd "$OUT/dex" && zip -q "$OUT/unsigned.apk" classes.dex)
+          "$BT/zipalign" -p -f 4 "$OUT/unsigned.apk" "$OUT/aligned.apk"
+          PASS="$(openssl rand -hex 20)"
+          keytool -genkeypair -noprompt -keystore "$OUT/key.jks" -storepass "$PASS" -keypass "$PASS" -alias nxlab -keyalg RSA -keysize 2048 -validity 3650 -dname 'CN=FAC NX Lab NonRoot v0.3.1 Test,O=FAC' >/dev/null 2>&1
+          "$BT/apksigner" sign --ks "$OUT/key.jks" --ks-key-alias nxlab --ks-pass "pass:$PASS" --key-pass "pass:$PASS" --out "$OUT/final/FAC_NX_Lab_NonRoot_v0.3.1_debug_shell.apk" "$OUT/aligned.apk"
+          "$BT/apksigner" verify --verbose "$OUT/final/FAC_NX_Lab_NonRoot_v0.3.1_debug_shell.apk"
+          unzip -t "$OUT/final/FAC_NX_Lab_NonRoot_v0.3.1_debug_shell.apk"
+          rm -f "$OUT/key.jks"
+      - name: Build report
+        shell: bash
+        run: |
+          APK="$GITHUB_WORKSPACE/build/v031/final/FAC_NX_Lab_NonRoot_v0.3.1_debug_shell.apk"
+          {
+            echo 'FAC NX Lab Non-Root v0.3.1 debug shell'
+            echo 'MediaProjection + ImageReader; no root/su/screencap.'
+            echo 'Debug overlay: startup self-test, red threshold matches, yellow top candidates, top-3 candidate scoring.'
+            echo "APK SHA-256: $(sha256sum "$APK" | awk '{print $1}')"
+          } > "$GITHUB_WORKSPACE/build/v031/final/BUILD_REPORT.txt"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FAC-NX-Lab-NonRoot-v0.3.1-debug-shell
+          path: build/v031/final/*
+          if-no-files-found: error
